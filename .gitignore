@@ -1,0 +1,24 @@
+# Internal planning (never pushed)
+planning/
+CLAUDE.md
+AGENTS.md
+.claude/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Dependencies and builds
+node_modules/
+dist/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# Local data and logs
+.nimbus/
+*.log
+.DS_Store
