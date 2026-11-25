@@ -37,6 +37,13 @@ export class OpenAIModelClient implements ModelClient {
         model: request.model,
         instructions: request.instructions,
         input: request.input,
+        tools: request.tools?.map((tool) => ({
+          type: "function" as const,
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+          strict: true,
+        })),
         prompt_cache_key: request.promptCacheKey,
         include: ["reasoning.encrypted_content"],
         store: false,

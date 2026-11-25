@@ -19,4 +19,19 @@ describe("system prompt", () => {
   it("detects a date without a time", () => {
     expect(detectEnvironment().date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
+
+  it("only mentions tools that exist", () => {
+    const env = { os: "Linux", shell: "bash", cwd: "/app", date: "2026-11-26" };
+    expect(buildSystemPrompt(env)).not.toContain("Tools:");
+
+    const readOnly = buildSystemPrompt(env, ["read_file"]);
+    expect(readOnly).toContain("use read_file");
+    expect(readOnly).not.toContain("use grep");
+    expect(readOnly).not.toContain("use glob");
+
+    const all = buildSystemPrompt(env, ["read_file", "glob", "grep"]);
+    expect(all).toContain("use glob");
+    expect(all).toContain("grep first to find the line");
+    expect(all).not.toMatch(/[\u2013\u2014]/);
+  });
 });

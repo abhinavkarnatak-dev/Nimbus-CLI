@@ -1,10 +1,19 @@
-import type { ModelClient, ModelEvent, ModelRequest, Usage } from "./types.js";
+import type { HistoryItem, ModelClient, ModelEvent, ModelRequest, Usage } from "./types.js";
 
-export type FakeTurn = { text: string; usage?: Partial<Usage> } | { error: string };
+export interface FakeToolCall {
+  name: string;
+  args: unknown;
+}
+
+export type FakeTurn =
+  | { text: string; usage?: Partial<Usage> }
+  | { toolCalls: FakeToolCall[]; text?: string; usage?: Partial<Usage> }
+  | { error: string };
 
 export class FakeModelClient implements ModelClient {
   readonly requests: ModelRequest[] = [];
   readonly #turns: FakeTurn[];
+  #callCount = 0;
 
   constructor(turns: FakeTurn[]) {
     this.#turns = [...turns];
@@ -17,16 +26,31 @@ export class FakeModelClient implements ModelClient {
     if (!turn) throw new Error("FakeModelClient has no more turns");
     if ("error" in turn) throw new Error(turn.error);
 
-    for (const word of turn.text.split(/(?<= )/)) {
+    const text = turn.text ?? "";
+    for (const word of text.split(/(?<= )/).filter(Boolean)) {
       signal?.throwIfAborted();
       await Promise.resolve();
       yield { type: "text_delta", text: word };
     }
     signal?.throwIfAborted();
 
+    const output: HistoryItem[] = [];
+    if (text) output.push({ role: "assistant", content: text });
+    if ("toolCalls" in turn) {
+      for (const call of turn.toolCalls) {
+        this.#callCount++;
+        output.push({
+          type: "function_call",
+          call_id: `call_${this.#callCount}`,
+          name: call.name,
+          arguments: typeof call.args === "string" ? call.args : JSON.stringify(call.args),
+        });
+      }
+    }
+
     yield {
       type: "completed",
-      output: [{ role: "assistant", content: turn.text }],
+      output,
       usage: { inputTokens: 0, cachedTokens: 0, outputTokens: 0, ...turn.usage },
     };
   }
