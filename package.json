@@ -15,7 +15,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "model-check": "tsx --env-file=.env scripts/model-check.ts"
+    "model-check": "tsx --env-file=.env scripts/model-check.ts",
+    "nimbus": "pnpm --filter @nimbus/harness build && tsx --env-file-if-exists=.env apps/cli/src/index.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

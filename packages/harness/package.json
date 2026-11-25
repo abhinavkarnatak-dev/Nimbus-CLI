@@ -17,5 +17,8 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "openai": "7.64.0"
   }
 }

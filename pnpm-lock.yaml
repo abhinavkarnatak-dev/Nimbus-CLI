@@ -56,7 +56,11 @@ importers:
 
   apps/server: {}
 
-  packages/harness: {}
+  packages/harness:
+    dependencies:
+      openai:
+        specifier: 7.64.0
+        version: 7.64.0
 
 packages:
 
