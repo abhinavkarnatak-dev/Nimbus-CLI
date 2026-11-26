@@ -15,6 +15,9 @@ AGENTS.md
 node_modules/
 dist/
 .turbo/
+.next/
+out/
+next-env.d.ts
 coverage/
 *.tsbuildinfo
 

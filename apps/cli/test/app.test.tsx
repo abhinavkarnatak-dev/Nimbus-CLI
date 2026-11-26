@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultTools, FakeModelClient, Session } from "@nimbus/harness";
 import { render } from "ink-testing-library";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SwitchableModelClient } from "../src/auth/client.js";
 import { AuthController } from "../src/auth/controller.js";
 import { memoryStore } from "../src/auth/credentials.js";
@@ -80,7 +80,81 @@ describe("App", () => {
     expect(output).toContain("Read(notes.md)");
     expect(output).toContain("Read 1 line");
     expect(output).toContain("The file says");
-    expect(lastFrame()).toContain("1.2k tokens");
+    expect(lastFrame()).toContain("gpt-6-luna");
+    expect(lastFrame()).not.toContain("tokens");
+    expect(lastFrame()).not.toContain("$");
+    unmount();
+  });
+
+  it("clears the screen with Ctrl+L but keeps the conversation", async () => {
+    let made = 0;
+    const client = new FakeModelClient([{ text: "first answer" }, { text: "second answer" }]);
+    const createSession = () => {
+      made += 1;
+      return new Session({ client, model: "gpt-6-luna", instructions: "test", cwd: tmpdir() });
+    };
+    const { frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("hello");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("first answer"));
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    stdin.write("\f");
+    await tick();
+    expect(write).toHaveBeenCalledWith("\x1b[2J\x1b[3J\x1b[H");
+    write.mockRestore();
+    expect(made).toBe(1);
+    stdin.write("again");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("second answer"));
+    expect(made).toBe(1);
+
+    stdin.write("/clear");
+    await tick();
+    stdin.write("\r");
+    await tick();
+    expect(made).toBe(2);
+    unmount();
+  });
+
+  it("adds a new line with Shift+Enter and Ctrl+J instead of sending", async () => {
+    const createSession = () =>
+      new Session({
+        client: new FakeModelClient([]),
+        model: "gpt-6-luna",
+        instructions: "test",
+        cwd: tmpdir(),
+      });
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("one");
+    await tick();
+    // Shift+Enter as the kitty keyboard protocol reports it
+    stdin.write("\x1b[13;2u");
+    await tick();
+    stdin.write("two");
+    await tick();
+    stdin.write("\n");
+    await tick();
+    stdin.write("three");
+    await tick();
+    const frame = lastFrame() ?? "";
+    expect(frame).toMatch(/one[^\n]*\n[^\n]*two[^\n]*\n[^\n]*three/);
+    expect(frames.join("\n")).not.toContain("› one");
     unmount();
   });
 

@@ -59,8 +59,6 @@ export function App({
   const [runningSince, setRunningSince] = useState<number | null>(null);
   const [queued, setQueued] = useState<string | null>(null);
   const [exitArmed, setExitArmed] = useState(false);
-  const [usage, setUsage] = useState<Usage>({ ...session.current.usage });
-  const [cost, setCost] = useState(0);
   const [account, setAccount] = useState<string | null>(auth.state.email);
   const [loggedIn, setLoggedIn] = useState(auth.state.loggedIn);
   const [login, setLogin] = useState<LoginPhase>({ phase: "idle" });
@@ -99,6 +97,13 @@ export function App({
     },
     [billing, notice],
   );
+
+  // Wipe the terminal; the conversation itself stays
+  const clearScreen = useCallback(() => {
+    process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+    setDone([{ kind: "header", id: newId() }]);
+    setStaticKey((key) => key + 1);
+  }, []);
 
   const quit = useCallback(async () => {
     controller.current?.abort();
@@ -182,8 +187,6 @@ export function App({
         } else {
           flush();
         }
-        setUsage({ ...current.usage });
-        setCost(current.cost);
       }
       flush(true);
       controller.current = null;
@@ -253,11 +256,7 @@ export function App({
           const old = session.current;
           void old.dispose();
           session.current = createSession();
-          process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
-          setDone([{ kind: "header", id: newId() }]);
-          setStaticKey((key) => key + 1);
-          setUsage({ ...session.current.usage });
-          setCost(0);
+          clearScreen();
           return;
         }
         case "/login":
@@ -355,7 +354,7 @@ export function App({
           });
       }
     },
-    [append, auth, beginLogin, billing, createSession, notice, quit, switchRoute],
+    [append, auth, beginLogin, billing, clearScreen, createSession, notice, quit, switchRoute],
   );
 
   // Save a pasted key; a bad key keeps the old one
@@ -459,6 +458,10 @@ export function App({
   }, [exitArmed]);
 
   useInput((input, key) => {
+    if (key.ctrl && input === "l") {
+      clearScreen();
+      return;
+    }
     if (panel.kind === "use") {
       if (key.upArrow || key.downArrow) {
         const step = key.upArrow ? -1 : 1;
@@ -555,9 +558,7 @@ export function App({
           onChange={setDraft}
           onSubmit={submit}
           history={history}
-          placeholder={
-            panel.kind === "key" ? "sk-..." : "Ask Nimbus to read, fix or build something"
-          }
+          placeholder={panel.kind === "key" ? "sk-..." : "Ask Nimbus anything"}
           menu={menu}
           selected={selected}
           onSelect={setMenuIndex}
@@ -568,7 +569,7 @@ export function App({
         {menu.length > 0 ? (
           <CommandMenu commands={menu} selected={selected} />
         ) : (
-          <StatusBar model={info.model} usage={usage} cost={cost} hint={hint} />
+          <StatusBar model={info.model} hint={hint} />
         )}
       </Box>
     </Box>

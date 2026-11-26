@@ -1,0 +1,1 @@
+Nimbus, an AI agent that lives in your terminal

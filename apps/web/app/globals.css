@@ -1,0 +1,142 @@
+:root {
+  --overcast: #dce3e8;
+  --mist: #f2f5f7;
+  --storm: #3c5266;
+  --ink: #18222d;
+  --sunbreak: #f5c542;
+
+  --serif: "Sentient", "Iowan Old Style", Georgia, serif;
+  --mono: "Commit Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Classic scale: 14 16 18 21 24 36 48 72 */
+  --text-sm: 0.875rem;
+  --text-base: 1.125rem;
+  --text-md: 1.3125rem;
+  --text-lg: 1.5rem;
+  --text-xl: 2.25rem;
+  --text-2xl: clamp(2.25rem, 5vw, 3rem);
+  --text-3xl: clamp(3rem, 8vw, 4.5rem);
+  --text-display: clamp(5.5rem, 17vw, 13rem);
+
+  --measure: 34em;
+  --gutter: clamp(1.25rem, 5vw, 4rem);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--storm) 55%, transparent) transparent;
+}
+
+/* Browsers without scrollbar-color */
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--storm) 55%, transparent) padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--storm) padding-box;
+  }
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--overcast);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: var(--text-base);
+  font-weight: 380;
+  line-height: 1.65;
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+a {
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(in srgb, var(--storm) 45%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  transition: text-decoration-color 0.2s var(--ease-out);
+}
+
+a:hover {
+  text-decoration-color: var(--ink);
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--mono);
+  font-size: 0.86em;
+}
+
+::selection {
+  background: var(--sunbreak);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--sunbreak) 70%, transparent);
+  border-radius: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

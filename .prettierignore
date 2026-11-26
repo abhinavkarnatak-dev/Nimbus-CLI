@@ -1,3 +1,6 @@
 pnpm-lock.yaml
 planning/
 apps/server/drizzle
+.next/
+out/
+next-env.d.ts

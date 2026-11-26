@@ -1,9 +1,7 @@
-import type { Usage } from "@nimbus/harness";
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
 import { useEffect, useState } from "react";
 import type { SlashCommand } from "./commands.js";
-import { formatCost, formatTokens } from "./format.js";
 import { theme } from "./theme.js";
 
 export function WorkingLine({ since }: { since: number }) {
@@ -51,23 +49,15 @@ export function CommandMenu({
 
 interface Props {
   model: string;
-  usage: Usage;
-  cost: number;
   hint: string;
 }
 
-export function StatusBar({ model, usage, cost, hint }: Props) {
-  const tokens = usage.inputTokens + usage.outputTokens;
-  const cached =
-    usage.inputTokens > 0 ? Math.round((usage.cachedTokens / usage.inputTokens) * 100) : 0;
+// Session tokens live in /usage; they add up the whole context on every call
+export function StatusBar({ model, hint }: Props) {
   return (
     <Box paddingX={2} justifyContent="space-between">
       <Text color={theme.muted}>{hint}</Text>
-      <Text color={theme.muted}>
-        {model}
-        {tokens > 0 &&
-          ` · ${formatTokens(tokens)} tokens (${cached}% cached) · ${formatCost(cost)}`}
-      </Text>
+      <Text color={theme.muted}>{model}</Text>
     </Box>
   );
 }

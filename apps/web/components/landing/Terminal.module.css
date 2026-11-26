@@ -1,0 +1,141 @@
+.row,
+.prompt,
+.header {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.header {
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--sunbreak);
+  border-radius: 10px;
+}
+
+.brand {
+  margin-bottom: 0.6rem;
+  color: var(--sunbreak);
+  font-weight: 700;
+}
+
+.header dl {
+  display: grid;
+  grid-template-columns: 6ch 1fr;
+  gap: 0.15rem 1rem;
+  margin: 0;
+}
+
+.header dt {
+  color: #8592a0;
+}
+
+.header dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1.5rem 0 0.5rem;
+  color: #b7c0c9;
+}
+
+.chevron {
+  color: #8592a0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1.2rem 1fr;
+  margin-top: 1rem;
+  animation: enter 0.6s var(--ease-out) both;
+}
+
+.dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: 0.5em;
+  border-radius: 50%;
+  background: #7bc67e;
+}
+
+.yellow {
+  background: var(--sunbreak);
+}
+
+.toolBody b {
+  font-weight: 700;
+}
+
+.arg {
+  color: #8592a0;
+}
+
+.result {
+  color: #d7dde3;
+}
+
+.elbow {
+  margin-right: 0.4rem;
+  color: #8592a0;
+}
+
+.code {
+  margin: 0.35rem 0 0 1.3rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-radius: 4px;
+}
+
+.code > div {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0 0.6rem;
+  white-space: pre;
+}
+
+.add {
+  background: #1e3a24;
+}
+
+.del {
+  background: #4a1f25;
+}
+
+.ctx,
+.out {
+  color: #aeb8c2;
+}
+
+.n {
+  min-width: 2ch;
+  text-align: right;
+  color: #7d8a96;
+}
+
+.sign {
+  color: #aeb8c2;
+}
+
+.reply p {
+  overflow-wrap: anywhere;
+}
+
+.reply p + p {
+  margin-top: 0.8rem;
+}
+
+.accent {
+  color: var(--sunbreak);
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(4px);
+  }
+}

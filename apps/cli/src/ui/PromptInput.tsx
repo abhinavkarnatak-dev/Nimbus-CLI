@@ -120,6 +120,12 @@ export function PromptInput({
         return;
       }
 
+      // Ctrl+J sends a line feed, a new line in every terminal
+      if (input === "\n" || (key.ctrl && input === "j")) {
+        apply(insert(latest.current, "\n"));
+        return;
+      }
+
       if (key.tab) return;
 
       if ((key.upArrow || key.downArrow) && mask) return;

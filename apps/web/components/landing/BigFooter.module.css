@@ -1,0 +1,41 @@
+.footer {
+  position: relative;
+  overflow: hidden;
+  padding: 5rem var(--gutter) 0;
+  background: var(--overcast);
+}
+
+.glow {
+  position: absolute;
+  left: 50%;
+  bottom: -40vw;
+  width: 90vw;
+  height: 70vw;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    rgb(255 250 235 / 0.9),
+    color-mix(in srgb, var(--sunbreak) 25%, transparent) 45%,
+    transparent
+  );
+}
+
+.links {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem 2rem;
+  font-size: var(--text-base);
+}
+
+.word {
+  position: relative;
+  margin: 4rem 0 0 -0.06em;
+  font-size: 27vw;
+  font-weight: 300;
+  line-height: 0.74;
+  letter-spacing: -0.065em;
+  white-space: nowrap;
+  transform-origin: bottom;
+}

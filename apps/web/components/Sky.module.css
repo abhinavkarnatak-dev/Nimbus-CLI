@@ -1,0 +1,90 @@
+.sky {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background: linear-gradient(180deg, #cdd6dd 0%, var(--overcast) 45%, var(--mist) 100%);
+}
+
+.glow {
+  position: absolute;
+  top: -30vmax;
+  right: -20vmax;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    rgb(255 250 235 / 0.9),
+    color-mix(in srgb, var(--sunbreak) 28%, transparent) 40%,
+    color-mix(in srgb, var(--sunbreak) 8%, transparent) 70%,
+    transparent 100%
+  );
+  opacity: 0;
+  animation: break 2.4s var(--ease-out) 0.3s forwards;
+}
+
+.cloud {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(255 255 255 / 0.9), rgb(255 255 255 / 0));
+  filter: blur(18px);
+  will-change: transform;
+}
+
+.a {
+  width: 80vmax;
+  height: 28vmax;
+  left: -25vmax;
+  top: 8vh;
+  animation: drift 90s linear infinite;
+}
+
+.b {
+  width: 60vmax;
+  height: 22vmax;
+  right: -20vmax;
+  top: 52vh;
+  opacity: 0.8;
+  animation: drift 120s linear infinite reverse;
+}
+
+.c {
+  width: 45vmax;
+  height: 16vmax;
+  left: 30vw;
+  bottom: -6vmax;
+  opacity: 0.7;
+  animation: drift 150s linear infinite;
+}
+
+.d {
+  width: 38vmax;
+  height: 14vmax;
+  left: 10vw;
+  top: -6vmax;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--storm) 14%, transparent),
+    transparent
+  );
+  animation: drift 110s linear infinite reverse;
+}
+
+@keyframes drift {
+  from {
+    transform: translateX(-6vw);
+  }
+  50% {
+    transform: translateX(6vw);
+  }
+  to {
+    transform: translateX(-6vw);
+  }
+}
+
+@keyframes break {
+  to {
+    opacity: 1;
+  }
+}

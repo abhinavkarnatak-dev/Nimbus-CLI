@@ -131,7 +131,11 @@ const app = render(
     loginOnStart={command === "login"}
     inviteCode={inviteCode}
   />,
-  { exitOnCtrlC: false },
+  {
+    exitOnCtrlC: false,
+    // Lets terminals that support it report Shift+Enter
+    kittyKeyboard: { mode: "auto" },
+  },
 );
 
 await app.waitUntilExit();

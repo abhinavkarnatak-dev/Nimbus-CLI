@@ -6,6 +6,9 @@
   "bin": {
     "nimbus": "./dist/index.js"
   },
+  "exports": {
+    "./commands": "./src/ui/commands.ts"
+  },
   "files": [
     "dist"
   ],

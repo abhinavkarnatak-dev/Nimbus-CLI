@@ -1,0 +1,52 @@
+.line {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.7rem 0.7rem 0.7rem 1.1rem;
+  background: var(--ink);
+  color: var(--mist);
+  border-radius: 10px;
+}
+
+.line code {
+  font-size: 0.9375rem;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.prompt {
+  margin-right: 0.75ch;
+  color: var(--sunbreak);
+}
+
+.copy {
+  flex: none;
+  padding: 0.3rem 0.75rem;
+  font: 500 0.8125rem/1.4 var(--mono);
+  color: var(--ink);
+  background: var(--sunbreak);
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-out);
+}
+
+.copy:active {
+  transform: scale(0.96);
+}
+
+.text {
+  position: relative;
+  display: inline-block;
+}
+
+.ghost {
+  visibility: hidden;
+}
+
+.typed {
+  position: absolute;
+  inset: 0;
+}

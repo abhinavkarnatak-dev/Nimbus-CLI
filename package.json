@@ -15,7 +15,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check:core": "pnpm format:check && pnpm lint && turbo run typecheck test build --filter=!@nimbus/web",
     "model-check": "tsx --env-file=.env scripts/model-check.ts",
+    "dev:web": "pnpm --filter @nimbus/web dev",
     "dev:server": "pnpm --filter @nimbus/harness build && tsx watch --env-file-if-exists=.env apps/server/src/index.ts",
     "db:migrate": "pnpm --filter @nimbus/server db:migrate",
     "db:token": "pnpm --filter @nimbus/harness build && pnpm --filter @nimbus/server db:token",
@@ -25,6 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "16.4.6",
     "@types/node": "24.19.2",
     "eslint": "10.15.0",
     "eslint-config-prettier": "10.1.8",

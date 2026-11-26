@@ -1,0 +1,140 @@
+.section {
+  padding: clamp(6rem, 16vh, 10rem) var(--gutter);
+  background: var(--mist);
+}
+
+.intro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.title {
+  max-width: 11em;
+  font-size: var(--text-3xl);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 5px;
+  border-radius: 999px;
+  background: var(--overcast);
+}
+
+.toggle button {
+  position: relative;
+  z-index: 1;
+  padding: 0.7rem 1.3rem;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--storm);
+  cursor: pointer;
+  transition: color 0.4s var(--ease-out);
+}
+
+.toggle button[aria-checked="true"] {
+  color: var(--ink);
+}
+
+.thumb {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  width: calc(50% - 5px);
+  border-radius: 999px;
+  background: var(--sunbreak);
+  box-shadow: 0 6px 18px -8px rgb(24 34 45 / 0.4);
+  transition: transform 0.6s cubic-bezier(0.65, 0, 0.2, 1.25);
+}
+
+.thumb[data-mode="key"] {
+  transform: translateX(100%);
+}
+
+.body {
+  display: grid;
+  gap: 3rem;
+  margin-top: clamp(3rem, 8vh, 5rem);
+}
+
+.map {
+  width: 100%;
+  max-width: 56rem;
+  overflow: visible;
+}
+
+.route {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.pulse {
+  fill: var(--sunbreak);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.node circle {
+  fill: var(--mist);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.node text {
+  font-family: var(--serif);
+  font-size: 19px;
+  text-anchor: middle;
+  fill: var(--ink);
+}
+
+.copy {
+  max-width: var(--measure);
+}
+
+.copy h3 {
+  font-size: var(--text-xl);
+  font-weight: 350;
+  letter-spacing: -0.02em;
+}
+
+.copy p {
+  margin-top: 0.8rem;
+  font-size: var(--text-md);
+  line-height: 1.5;
+}
+
+.copy .both {
+  margin-top: 1.5rem;
+  font-size: var(--text-base);
+  color: var(--storm);
+}
+
+@media (max-width: 899px) {
+  .node text {
+    font-size: 30px;
+  }
+
+  .map {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .body {
+    grid-template-columns: 1.4fr 1fr;
+    align-items: center;
+  }
+}

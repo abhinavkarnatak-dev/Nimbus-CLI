@@ -36,5 +36,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The website does not depend on the OS, so it is checked on ubuntu only
       - name: Check format, lint, types, tests and build
-        run: pnpm check
+        run: ${{ matrix.os == 'ubuntu-latest' && 'pnpm check' || 'pnpm check:core' }}
