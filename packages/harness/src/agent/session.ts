@@ -38,6 +38,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// HTTP status from SDK errors, so the UI can react (for example 401)
+function errorStatus(error: unknown): number | undefined {
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === "number" ? status : undefined;
+}
+
 export class Session {
   readonly id: string;
   readonly model: string;
@@ -173,7 +179,8 @@ export class Session {
         yield { type: "turn_cancelled" };
         return;
       }
-      yield { type: "error", message: errorMessage(error) };
+      const status = errorStatus(error);
+      yield { type: "error", message: errorMessage(error), ...(status ? { status } : {}) };
     }
   }
 

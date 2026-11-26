@@ -1,24 +1,21 @@
-import { OpenAIModelClient } from "@nimbus/harness";
+export const DEFAULT_SERVER_URL = "http://localhost:8787";
 
-export interface Connection {
-  client: OpenAIModelClient;
-  route: string;
+export type Setup =
+  { mode: "server"; serverUrl: string; envToken?: string } | { mode: "direct"; apiKey: string };
+
+// Server unless only an OpenAI key is configured
+export function resolveSetup(env: NodeJS.ProcessEnv = process.env): Setup {
+  const serverUrl = env.NIMBUS_SERVER_URL?.trim().replace(/\/+$/, "");
+  const envToken = env.NIMBUS_TOKEN?.trim() || undefined;
+  const apiKey = env.OPENAI_API_KEY?.trim();
+  if (serverUrl || !apiKey) {
+    return { mode: "server", serverUrl: serverUrl || DEFAULT_SERVER_URL, envToken };
+  }
+  return { mode: "direct", apiKey };
 }
 
-// Server when configured, else direct to OpenAI
-export function connect(env: NodeJS.ProcessEnv = process.env): Connection {
-  const serverUrl = env.NIMBUS_SERVER_URL?.trim().replace(/\/+$/, "");
-  if (serverUrl) {
-    const token = env.NIMBUS_TOKEN?.trim();
-    if (!token) throw new Error("NIMBUS_SERVER_URL is set but NIMBUS_TOKEN is not.");
-    return {
-      client: new OpenAIModelClient({ apiKey: token, baseURL: `${serverUrl}/v1` }),
-      route: `server ${serverUrl.replace(/^https?:\/\//, "")}`,
-    };
-  }
-  const apiKey = env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("Set NIMBUS_SERVER_URL and NIMBUS_TOKEN, or OPENAI_API_KEY.");
-  }
-  return { client: new OpenAIModelClient({ apiKey }), route: "direct to OpenAI" };
+export function routeLabel(setup: Setup): string {
+  return setup.mode === "server"
+    ? `server ${setup.serverUrl.replace(/^https?:\/\//, "")}`
+    : "direct to OpenAI";
 }

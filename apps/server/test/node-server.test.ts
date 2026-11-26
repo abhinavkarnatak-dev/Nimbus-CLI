@@ -5,6 +5,7 @@ import { createApp } from "../src/app.js";
 import { issueToken } from "../src/db/tokens.js";
 import { silentLogger } from "../src/log.js";
 import { testDb } from "./db.js";
+import { fakeGoogle } from "./fake-google.js";
 import { fakeUpstream, SSE_EVENTS, sse } from "./fake-upstream.js";
 
 let server: ServerType | undefined;
@@ -16,6 +17,7 @@ describe("real HTTP server", () => {
     const { db, client } = await testDb();
     const { token } = await issueToken(db, "net@test.dev", "test");
     const app = createApp({
+      google: fakeGoogle().google,
       db,
       config: {
         openaiApiKey: "sk",

@@ -13,13 +13,13 @@ export interface HeaderInfo {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <Text>
-      <Text color={theme.muted}>{`  ${label.padEnd(7)}`}</Text>
+      <Text color={theme.muted}>{`  ${label.padEnd(8)}`}</Text>
       {value}
     </Text>
   );
 }
 
-export function Header({ info }: { info: HeaderInfo }) {
+export function Header({ info, account }: { info: HeaderInfo; account?: string }) {
   return (
     <Box
       borderStyle="round"
@@ -40,6 +40,7 @@ export function Header({ info }: { info: HeaderInfo }) {
       <Row label="model" value={info.model} />
       <Row label="shell" value={info.shell} />
       <Row label="via" value={info.route} />
+      {account !== undefined && <Row label="account" value={account} />}
     </Box>
   );
 }

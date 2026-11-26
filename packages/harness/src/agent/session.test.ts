@@ -104,6 +104,12 @@ describe("Session", () => {
     expect(session.cost).toBeCloseTo(1.2);
   });
 
+  it("passes the HTTP status of a failed call on the error event", async () => {
+    const session = newSession(new FakeModelClient([{ error: "Invalid token", status: 401 }]));
+    const events = await collect(session.send("hi"));
+    expect(events).toEqual([{ type: "error", message: "Invalid token", status: 401 }]);
+  });
+
   it("turns model errors into an error event and keeps history unchanged", async () => {
     const session = newSession(new FakeModelClient([{ error: "rate limited" }]));
     const events = await collect(session.send("hi"));

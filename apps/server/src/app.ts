@@ -1,11 +1,13 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { bearerToken } from "./auth.js";
+import { bearerToken } from "./auth/bearer.js";
+import type { GoogleAuth } from "./auth/google.js";
+import { authRoutes } from "./auth/routes.js";
 import { usageFromReport } from "./billing.js";
 import type { ServerConfig } from "./config.js";
 import type { Db } from "./db/client.js";
 import { recordUsage } from "./db/ledger.js";
-import { findTokenOwner, touchToken } from "./db/tokens.js";
+import { findTokenOwner, revokeToken, touchToken } from "./db/tokens.js";
 import type { AppEnv } from "./env.js";
 import { apiError } from "./errors.js";
 import { jsonLogger, type Logger } from "./log.js";
@@ -17,6 +19,7 @@ const TOUCH_EVERY_MS = 5 * 60 * 1000;
 export interface AppDeps {
   config: Pick<ServerConfig, "openaiApiKey" | "openaiBaseUrl" | "maxOutputTokens">;
   db: Db;
+  google: GoogleAuth;
   fetchUpstream?: typeof fetch;
   log?: Logger;
   // Resolves once the ledger write is done (used by tests)
@@ -29,6 +32,7 @@ export function createApp(deps: AppDeps) {
   const app = new Hono<AppEnv>();
 
   app.get("/health", (c) => c.json({ ok: true }));
+  app.route("/auth", authRoutes({ db, google: deps.google, log }));
 
   // Every /v1 route needs a valid token from the database
   app.use("/v1/*", async (c, next) => {
@@ -54,6 +58,14 @@ export function createApp(deps: AppDeps) {
     }
     c.set("auth", owner);
     await next();
+  });
+
+  app.get("/v1/me", (c) => c.json({ email: c.get("auth").email }));
+
+  // Revoke the token used for this request
+  app.post("/v1/auth/logout", async (c) => {
+    await revokeToken(db, c.get("auth").tokenId);
+    return c.body(null, 204);
   });
 
   // Write the ledger row without holding up the stream

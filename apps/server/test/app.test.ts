@@ -9,6 +9,7 @@ import { silentLogger } from "../src/log.js";
 import type { CallReport } from "../src/proxy/route.js";
 import { FinalEventScanner } from "../src/proxy/usage.js";
 import { testDb } from "./db.js";
+import { fakeGoogle } from "./fake-google.js";
 import { fakeUpstream, SSE_EVENTS, sse } from "./fake-upstream.js";
 
 const config = {
@@ -41,6 +42,7 @@ async function setup(upstreamOptions?: Parameters<typeof fakeUpstream>[0]) {
   const upstream = fakeUpstream(upstreamOptions);
   const recorded: { report: CallReport; error?: unknown }[] = [];
   const app = createApp({
+    google: fakeGoogle().google,
     config,
     db,
     fetchUpstream: upstream.fetchUpstream,
@@ -236,6 +238,7 @@ describe("ledger", () => {
     const { recorded, rows, token } = await setup();
     const controller = new AbortController();
     const slowApp = createApp({
+      google: fakeGoogle().google,
       config,
       db,
       log: silentLogger,

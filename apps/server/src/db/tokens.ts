@@ -14,7 +14,14 @@ export interface TokenOwner {
   lastUsedAt: Date | null;
 }
 
-// Create the user if needed, store only the hash
+// New token for a user, only the hash is stored
+export async function createToken(db: Db, userId: string, label: string): Promise<string> {
+  const token = TOKEN_PREFIX + randomBytes(32).toString("base64url");
+  await db.insert(apiTokens).values({ userId, tokenHash: hashToken(token), label });
+  return token;
+}
+
+// Admin path: create the user by email if needed
 export async function issueToken(
   db: Db,
   email: string,
@@ -26,9 +33,7 @@ export async function issueToken(
     .values({ email: normalized })
     .onConflictDoUpdate({ target: users.email, set: { email: normalized } })
     .returning({ id: users.id });
-  const token = TOKEN_PREFIX + randomBytes(32).toString("base64url");
-  await db.insert(apiTokens).values({ userId: user!.id, tokenHash: hashToken(token), label });
-  return { token, userId: user!.id };
+  return { token: await createToken(db, user!.id, label), userId: user!.id };
 }
 
 // Valid token of an active user, or null

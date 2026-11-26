@@ -1,11 +1,13 @@
 import type { Session, Usage } from "@nimbus/harness";
+import type { AuthController } from "../auth/controller.js";
 import { Box, Static, useApp, useInput } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HELP_TEXT, matchCommands } from "./commands.js";
-import { emptyDraft, type Draft } from "./editor.js";
+import { emptyDraft, fromText, type Draft } from "./editor.js";
 import { formatCost, formatTokens } from "./format.js";
 import { Header, type HeaderInfo } from "./Header.js";
 import { ItemView } from "./ItemView.js";
+import { LoginPanel, type LoginPhase } from "./LoginPanel.js";
 import { PromptInput } from "./PromptInput.js";
 import { CommandMenu, StatusBar, WorkingLine } from "./StatusBar.js";
 import { applyEvent, newId, settle, type Item } from "./transcript.js";
@@ -17,6 +19,9 @@ interface Props {
   createSession: () => Session;
   info: HeaderInfo;
   onExit: (totalCost: number) => void;
+  // Null in direct mode, where no login is needed
+  auth: AuthController | null;
+  loginOnStart?: boolean;
 }
 
 function usageReport(usage: Usage, cost: number): string {
@@ -28,7 +33,7 @@ function usageReport(usage: Usage, cost: number): string {
   ].join(" · ");
 }
 
-export function App({ createSession, info, onExit }: Props) {
+export function App({ createSession, info, onExit, auth, loginOnStart = false }: Props) {
   const { exit } = useApp();
   const session = useRef<Session>(null as unknown as Session);
   if (!session.current) session.current = createSession();
@@ -45,6 +50,10 @@ export function App({ createSession, info, onExit }: Props) {
   const [exitArmed, setExitArmed] = useState(false);
   const [usage, setUsage] = useState<Usage>({ ...session.current.usage });
   const [cost, setCost] = useState(0);
+  const [account, setAccount] = useState<string | null>(auth?.state.email ?? null);
+  const [loggedIn, setLoggedIn] = useState(auth?.state.loggedIn ?? true);
+  const [login, setLogin] = useState<LoginPhase>({ phase: "idle" });
+  const loginAbort = useRef<AbortController | null>(null);
 
   const controller = useRef<AbortController | null>(null);
   const working = useRef<Item[]>([]);
@@ -62,6 +71,11 @@ export function App({ createSession, info, onExit }: Props) {
   }, []);
 
   const append = useCallback((item: Item) => setDone((prev) => [...prev, item]), []);
+  const notice = useCallback(
+    (text: string, tone: "info" | "error" = "info") =>
+      append({ kind: "notice", id: newId(), text, tone }),
+    [append],
+  );
 
   const quit = useCallback(async () => {
     controller.current?.abort();
@@ -71,14 +85,26 @@ export function App({ createSession, info, onExit }: Props) {
   }, [exit, onExit]);
 
   const runTurn = useCallback(
-    async (text: string) => {
+    async (text: string, echo = true) => {
       const current = session.current;
       const abort = new AbortController();
       controller.current = abort;
       setRunningSince(Date.now());
-      append({ kind: "user", id: newId(), text });
+      if (echo) append({ kind: "user", id: newId(), text });
       working.current = [];
       for await (const event of current.send(text, abort.signal)) {
+        // Token refused: forget it and ask to log in, keeping the message
+        if (event.type === "error" && event.status === 401 && auth) {
+          auth.forget();
+          setLoggedIn(false);
+          setAccount(null);
+          setLogin({
+            phase: "prompt",
+            pending: text,
+            reason: "Your login has expired or was revoked. Log in again to continue.",
+          });
+          continue;
+        }
         working.current = applyEvent(working.current, event);
         if (event.type === "text_delta") {
           if (!flushTimer.current) flushTimer.current = setTimeout(() => flush(), FLUSH_MS);
@@ -92,7 +118,35 @@ export function App({ createSession, info, onExit }: Props) {
       controller.current = null;
       setRunningSince(null);
     },
-    [append, flush],
+    [append, flush, auth],
+  );
+
+  // Browser login, then send the message that was waiting for it
+  const beginLogin = useCallback(
+    async (pending: string | null) => {
+      if (!auth || loginAbort.current) return;
+      const abort = new AbortController();
+      loginAbort.current = abort;
+      setLogin({ phase: "waiting", url: null, pending });
+      try {
+        const email = await auth.login({
+          signal: abort.signal,
+          onUrl: (url) => setLogin((prev) => (prev.phase === "waiting" ? { ...prev, url } : prev)),
+        });
+        setAccount(email);
+        setLoggedIn(true);
+        notice(`✓ Logged in as ${email}`);
+        setLogin({ phase: "idle" });
+        if (pending) void runTurn(pending, false);
+      } catch (error) {
+        setLogin({ phase: "idle" });
+        notice((error as Error).message, abort.signal.aborted ? "info" : "error");
+        if (pending) setDraft(fromText(pending));
+      } finally {
+        loginAbort.current = null;
+      }
+    },
+    [auth, notice, runTurn],
   );
 
   const runCommand = useCallback(
@@ -121,6 +175,21 @@ export function App({ createSession, info, onExit }: Props) {
           setCost(0);
           return;
         }
+        case "/login":
+          if (!auth) notice("No login needed: Nimbus is using your own OpenAI key.");
+          else void beginLogin(null);
+          return;
+        case "/logout":
+          if (!auth) {
+            notice("No login needed: Nimbus is using your own OpenAI key.");
+          } else {
+            void auth.logout().then(() => {
+              setLoggedIn(false);
+              setAccount(null);
+              notice("Logged out on this computer.");
+            });
+          }
+          return;
         case "/exit":
           void quit();
           return;
@@ -133,7 +202,7 @@ export function App({ createSession, info, onExit }: Props) {
           });
       }
     },
-    [append, createSession, quit],
+    [append, auth, beginLogin, createSession, notice, quit],
   );
 
   const submit = useCallback(
@@ -144,14 +213,43 @@ export function App({ createSession, info, onExit }: Props) {
         runCommand(text.toLowerCase());
         return;
       }
+      if (login.phase === "waiting") {
+        notice("Finish logging in first, or press esc to cancel.");
+        setDraft(fromText(text));
+        return;
+      }
+      if (auth && !loggedIn) {
+        append({ kind: "user", id: newId(), text });
+        if (login.phase === "prompt") {
+          void beginLogin(text);
+          return;
+        }
+        setLogin({ phase: "prompt", pending: text, reason: "Log in to start using Nimbus." });
+        return;
+      }
       if (controller.current) {
         setQueued(text);
         return;
       }
       void runTurn(text);
     },
-    [runCommand, runTurn],
+    [append, auth, beginLogin, loggedIn, login.phase, notice, runCommand, runTurn],
   );
+
+  // nimbus login: open the browser once, right away
+  const loginStarted = useRef(false);
+  useEffect(() => {
+    if (!loginOnStart || loginStarted.current) return;
+    loginStarted.current = true;
+    void beginLogin(null);
+  }, [loginOnStart, beginLogin]);
+
+  // A token from NIMBUS_TOKEN has no saved email yet
+  useEffect(() => {
+    if (auth && loggedIn && !account) {
+      void auth.refreshEmail().then((email) => email && setAccount(email));
+    }
+  }, [auth, loggedIn, account]);
 
   // Send a queued message once the turn ends
   useEffect(() => {
@@ -171,6 +269,19 @@ export function App({ createSession, info, onExit }: Props) {
   }, [exitArmed]);
 
   useInput((input, key) => {
+    if (login.phase === "prompt" && key.return && !draft.value) {
+      void beginLogin(login.pending);
+      return;
+    }
+    if (key.escape && login.phase === "waiting") {
+      loginAbort.current?.abort();
+      return;
+    }
+    if (key.escape && login.phase === "prompt") {
+      if (login.pending) setDraft(fromText(login.pending));
+      setLogin({ phase: "idle" });
+      return;
+    }
     if (key.escape) {
       if (controller.current) controller.current.abort();
       else if (queued) setQueued(null);
@@ -178,7 +289,9 @@ export function App({ createSession, info, onExit }: Props) {
       return;
     }
     if (key.ctrl && input === "c") {
-      if (controller.current) {
+      if (loginAbort.current) {
+        loginAbort.current.abort();
+      } else if (controller.current) {
         controller.current.abort();
       } else if (draft.value) {
         setDraft(emptyDraft);
@@ -197,14 +310,22 @@ export function App({ createSession, info, onExit }: Props) {
     ? "Press Ctrl+C again to exit"
     : queued
       ? `Queued: ${queued.slice(0, 40)} (esc to drop)`
-      : "/help for commands";
+      : auth && !loggedIn
+        ? "not logged in · /login"
+        : account
+          ? `${account} · /help for commands`
+          : "/help for commands";
 
   return (
     <Box flexDirection="column">
       <Static key={staticKey} items={done}>
         {(item) =>
           item.kind === "header" ? (
-            <Header key={item.id} info={info} />
+            <Header
+              key={item.id}
+              info={info}
+              account={auth ? (account ?? (loggedIn ? "logged in" : "not logged in")) : undefined}
+            />
           ) : (
             <ItemView key={item.id} item={item} />
           )
@@ -212,6 +333,7 @@ export function App({ createSession, info, onExit }: Props) {
       </Static>
       {live.map((item) => (item.kind === "header" ? null : <ItemView key={item.id} item={item} />))}
       {runningSince !== null && <WorkingLine since={runningSince} />}
+      <LoginPanel login={login} />
       <Box marginTop={1} flexDirection="column">
         <PromptInput
           draft={draft}

@@ -74,4 +74,24 @@ export const usageEvents = nimbus.table(
   (table) => [index("usage_events_user_time_idx").on(table.userId, table.createdAt)],
 );
 
-export const schema = { users, apiTokens, usageEvents };
+// One browser login started by the CLI, valid for a few minutes
+export const loginAttempts = nimbus.table(
+  "login_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cliState: text("cli_state").notNull(),
+    cliChallenge: text("cli_challenge").notNull(),
+    cliPort: integer("cli_port").notNull(),
+    googleState: text("google_state").notNull().unique(),
+    googleVerifier: text("google_verifier").notNull(),
+    codeHash: text("code_hash").unique(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    authorizedAt: timestamp("authorized_at", { withTimezone: true }),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (table) => [index("login_attempts_expires_idx").on(table.expiresAt)],
+);
+
+export const schema = { users, apiTokens, usageEvents, loginAttempts };

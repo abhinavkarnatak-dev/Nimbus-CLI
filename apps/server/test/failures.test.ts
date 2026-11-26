@@ -5,6 +5,7 @@ import { issueToken } from "../src/db/tokens.js";
 import { silentLogger } from "../src/log.js";
 import type { CallReport } from "../src/proxy/route.js";
 import { testDb } from "./db.js";
+import { fakeGoogle } from "./fake-google.js";
 import { fakeUpstream, SSE_EVENTS, sse } from "./fake-upstream.js";
 
 const config = {
@@ -21,6 +22,7 @@ describe("database failures", () => {
     await db.execute(sql`drop table nimbus.usage_events`);
     const recorded: { report: CallReport; error?: unknown }[] = [];
     const app = createApp({
+      google: fakeGoogle().google,
       config,
       db,
       fetchUpstream: fakeUpstream().fetchUpstream,
@@ -45,7 +47,13 @@ describe("database failures", () => {
     const { token } = await issueToken(db, "b@test.dev", "test");
     await db.execute(sql`drop schema nimbus cascade`);
     const upstream = fakeUpstream();
-    const app = createApp({ config, db, fetchUpstream: upstream.fetchUpstream, log: silentLogger });
+    const app = createApp({
+      config,
+      db,
+      google: fakeGoogle().google,
+      fetchUpstream: upstream.fetchUpstream,
+      log: silentLogger,
+    });
     const res = await app.request("/v1/responses", {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },

@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
+import { googleAuth } from "./auth/google.js";
 import { loadConfig } from "./config.js";
 import { connectDb, sslFor } from "./db/client.js";
 import { jsonLogger } from "./log.js";
@@ -13,7 +14,12 @@ if (typeof ssl === "object" && !ssl.rejectUnauthorized) {
     fix: "set DATABASE_CA_CERT_PATH to the Supabase CA certificate",
   });
 }
-const app = createApp({ config, db });
+const google = googleAuth(
+  config.googleClientId,
+  config.googleClientSecret,
+  `${config.publicUrl}/auth/google/callback`,
+);
+const app = createApp({ config, db, google });
 
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   jsonLogger("info", "nimbus server listening", { port: info.port });
