@@ -1,14 +1,17 @@
 import { z } from "zod";
+import type { FileTracker } from "./file-state.js";
 
 export interface ToolContext {
   cwd: string;
   signal: AbortSignal;
+  files: FileTracker;
 }
 
 export interface ToolResult {
   output: string;
   isError?: boolean;
   summary?: string;
+  diff?: string;
 }
 
 export interface ToolSpec {

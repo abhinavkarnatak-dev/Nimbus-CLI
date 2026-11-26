@@ -2,10 +2,11 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
+import { FileTracker } from "./file-state.js";
 import { readFileTool } from "./read-file.js";
 
 let root: string;
-const ctx = () => ({ cwd: root, signal: new AbortController().signal });
+const ctx = () => ({ cwd: root, signal: new AbortController().signal, files: new FileTracker() });
 const read = (args: object) => readFileTool.execute(JSON.stringify(args), ctx());
 const args = (path: string, offset: number | null = null, limit: number | null = null) => ({
   path,

@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
 import {
@@ -10,6 +11,9 @@ import {
 } from "@nimbus/harness";
 
 const MODEL = "gpt-6-luna";
+
+const folder = process.argv[2];
+if (folder) process.chdir(resolve(folder));
 
 const apiKey = process.env.OPENAI_API_KEY;
 if (!apiKey) {
@@ -29,6 +33,14 @@ const session = new Session({
   tools: defaultTools,
 });
 
+function printDiff(diff: string): void {
+  for (const line of diff.split("\n").slice(2)) {
+    if (line.startsWith("+")) stdout.write(`      \x1b[32m${line}\x1b[0m\n`);
+    else if (line.startsWith("-")) stdout.write(`      \x1b[31m${line}\x1b[0m\n`);
+    else stdout.write(`      \x1b[2m${line}\x1b[0m\n`);
+  }
+}
+
 function shortArgs(args: string): string {
   const flat = args.replace(/\s+/g, " ");
   return flat.length > 80 ? `${flat.slice(0, 77)}...` : flat;
@@ -46,7 +58,8 @@ rl.on("SIGINT", () => {
   process.exit(0);
 });
 
-console.log(`nimbus v${HARNESS_VERSION} (${MODEL}) - type /exit to quit, Ctrl+C to stop a reply`);
+console.log(`nimbus v${HARNESS_VERSION} (${MODEL}) in ${env.cwd}`);
+console.log("type /exit to quit, Ctrl+C to stop a reply");
 
 while (true) {
   const text = (await rl.question("\n> ")).trim();
@@ -69,6 +82,7 @@ while (true) {
     } else if (event.type === "tool_call_end") {
       const mark = event.isError ? "x" : "ok";
       stdout.write(`    ${mark} ${event.summary.split("\n")[0]} (${event.durationMs}ms)\n`);
+      if (event.diff && !event.isError) printDiff(event.diff);
     } else if (event.type === "turn_complete") {
       const { inputTokens, cachedTokens, outputTokens } = event.usage;
       stdout.write(

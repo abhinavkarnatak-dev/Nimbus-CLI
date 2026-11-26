@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { z } from "zod";
+import { isBinary } from "./text.js";
 import { resolveInside } from "./paths.js";
 import { defineTool } from "./types.js";
 
@@ -12,10 +13,6 @@ const schema = z.strictObject({
   offset: z.number().nullable(),
   limit: z.number().nullable(),
 });
-
-function isBinary(bytes: Buffer): boolean {
-  return bytes.subarray(0, 8000).includes(0);
-}
 
 function splitLines(text: string): string[] {
   if (text.length === 0) return [];
@@ -56,6 +53,7 @@ Fails for binary files and for paths outside the working directory.`,
     const bytes = await readFile(file, { signal: ctx.signal });
     if (isBinary(bytes)) throw new Error(`${path} is a binary file and cannot be read as text`);
 
+    ctx.files.markRead(file, info.mtimeMs);
     const lines = splitLines(bytes.toString("utf8"));
     if (lines.length === 0) return { output: "(empty file)", summary: "empty file" };
     if (start > lines.length) {

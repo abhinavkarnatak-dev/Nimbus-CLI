@@ -34,4 +34,15 @@ describe("system prompt", () => {
     expect(all).toContain("grep first to find the line");
     expect(all).not.toMatch(/[\u2013\u2014]/);
   });
+
+  it("adds editing rules only when edit tools exist", () => {
+    const env = { os: "Linux", shell: "bash", cwd: "/app", date: "2026-11-26" };
+    const readOnly = buildSystemPrompt(env, ["read_file", "grep"]);
+    expect(readOnly).toContain("You can read and search files");
+    expect(readOnly).not.toContain("Editing files:");
+
+    const withEdit = buildSystemPrompt(env, ["read_file", "edit", "write_file"]);
+    expect(withEdit).toContain("You can read, search and edit files");
+    expect(withEdit).toContain("Editing files:");
+  });
 });

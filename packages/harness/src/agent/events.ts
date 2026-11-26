@@ -10,6 +10,7 @@ export type AgentEvent =
       summary: string;
       isError: boolean;
       durationMs: number;
+      diff?: string;
     }
   | { type: "turn_complete"; usage: Usage; cost: number }
   | { type: "turn_cancelled" }

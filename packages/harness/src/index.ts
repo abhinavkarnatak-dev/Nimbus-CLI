@@ -24,14 +24,19 @@ export {
   type ToolResult,
   type ToolSpec,
 } from "./tools/types.js";
+export { editTool } from "./tools/edit.js";
+export { FileTracker } from "./tools/file-state.js";
 export { globTool } from "./tools/glob.js";
 export { grepTool } from "./tools/grep.js";
 export { readFileTool } from "./tools/read-file.js";
+export { writeFileTool } from "./tools/write-file.js";
 export { truncateOutput } from "./tools/truncate.js";
 
+import { editTool } from "./tools/edit.js";
 import { globTool } from "./tools/glob.js";
 import { grepTool } from "./tools/grep.js";
 import { readFileTool } from "./tools/read-file.js";
 import type { Tool } from "./tools/types.js";
+import { writeFileTool } from "./tools/write-file.js";
 
-export const defaultTools: Tool[] = [readFileTool, globTool, grepTool];
+export const defaultTools: Tool[] = [readFileTool, globTool, grepTool, editTool, writeFileTool];

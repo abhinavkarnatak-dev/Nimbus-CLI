@@ -40,10 +40,27 @@ function toolsSection(tools: ReadonlySet<string>): string {
     );
   }
 
+  const canEdit = tools.has("edit") || tools.has("write_file");
+  const editing = canEdit
+    ? `
+
+Editing files:
+- Read a file before you edit it. Edits to files you have not read will fail,
+  and so will edits to files that changed after you read them.
+- Use edit for changes to existing files. old_string must match the file
+  exactly, including indentation, and must appear only once. Include a few
+  surrounding lines if needed to make it unique.
+- Never include the line number prefixes from read_file in old_string or new_string.
+- Use write_file only for new files or when replacing most of a file.
+- Keep changes focused on what the user asked. Do not reformat or rewrite
+  unrelated code.
+- After editing, tell the user briefly what you changed and where.`
+    : "";
+
   return `
 
 Tools:
-You can read and search files in the working directory. Use them to answer
+You can ${canEdit ? "read, search and edit" : "read and search"} files in the working directory. Use them to answer
 from the real code, not from memory.
 
 How to find things:
@@ -61,7 +78,7 @@ Working well:
 Answering:
 - Paths are relative to the working directory and use forward slashes.
 - When you mention code, include the path and line, like src/agent/session.ts:42.
-- Quote only the few lines that matter, not whole files.`;
+- Quote only the few lines that matter, not whole files.${editing}`;
 }
 
 export function buildSystemPrompt(env: Environment, toolNames: readonly string[] = []): string {

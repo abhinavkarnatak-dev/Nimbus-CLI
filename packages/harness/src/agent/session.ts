@@ -8,6 +8,7 @@ import {
   type ModelClient,
   type Usage,
 } from "../model/types.js";
+import { FileTracker } from "../tools/file-state.js";
 import { truncateOutput } from "../tools/truncate.js";
 import type { Tool, ToolContext, ToolResult } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
@@ -44,6 +45,7 @@ export class Session {
   readonly #maxSteps: number;
   readonly #history: HistoryItem[] = [];
   readonly #usage: Usage = emptyUsage();
+  readonly #files = new FileTracker();
   #cost = 0;
 
   constructor(options: SessionOptions) {
@@ -73,7 +75,11 @@ export class Session {
     const turnItems: HistoryItem[] = [{ role: "user", content: text }];
     const turnUsage = emptyUsage();
     let turnCost = 0;
-    const ctx: ToolContext = { cwd: this.cwd, signal: signal ?? new AbortController().signal };
+    const ctx: ToolContext = {
+      cwd: this.cwd,
+      signal: signal ?? new AbortController().signal,
+      files: this.#files,
+    };
     const toolSpecs = [...this.#tools.values()].map(({ name, description, parameters }) => ({
       name,
       description,
@@ -141,6 +147,7 @@ export class Session {
             summary: result.summary ?? (result.isError ? result.output : "done"),
             isError: result.isError ?? false,
             durationMs: Date.now() - started,
+            diff: result.diff,
           };
         }
       }
