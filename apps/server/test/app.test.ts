@@ -1,14 +1,19 @@
-import { describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp, MAX_BODY_BYTES } from "../src/app.js";
+import type { Db } from "../src/db/client.js";
+import { apiTokens, usageEvents, users } from "../src/db/schema.js";
+import { issueToken } from "../src/db/tokens.js";
 import { silentLogger } from "../src/log.js";
-import type { StreamReport } from "../src/proxy/route.js";
+import type { CallReport } from "../src/proxy/route.js";
 import { FinalEventScanner } from "../src/proxy/usage.js";
+import { testDb } from "./db.js";
 import { fakeUpstream, SSE_EVENTS, sse } from "./fake-upstream.js";
 
 const config = {
   openaiApiKey: "sk-server-secret",
   openaiBaseUrl: "https://upstream.test/v1",
-  devToken: "dev-token",
   maxOutputTokens: 16_000,
 };
 
@@ -20,44 +25,58 @@ const validBody = {
   stream: true,
 };
 
-function setup(upstreamOptions?: Parameters<typeof fakeUpstream>[0]) {
+let db: Db;
+let client: PGlite;
+let userCount = 0;
+
+beforeAll(async () => {
+  ({ db, client } = await testDb());
+});
+afterAll(async () => {
+  await client.close();
+});
+
+async function setup(upstreamOptions?: Parameters<typeof fakeUpstream>[0]) {
+  const { token, userId } = await issueToken(db, `user${++userCount}@test.dev`, "test");
   const upstream = fakeUpstream(upstreamOptions);
-  const reports: StreamReport[] = [];
+  const recorded: { report: CallReport; error?: unknown }[] = [];
   const app = createApp({
     config,
+    db,
     fetchUpstream: upstream.fetchUpstream,
     log: silentLogger,
-    onStreamEnd: (report) => reports.push(report),
+    onRecorded: (report, error) => recorded.push({ report, error }),
   });
-  const post = (body: unknown, token: string | null = "dev-token", signal?: AbortSignal) =>
+  const post = (body: unknown, auth: string | null = token, signal?: AbortSignal) =>
     app.request("/v1/responses", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(auth ? { authorization: `Bearer ${auth}` } : {}),
       },
       body: typeof body === "string" ? body : JSON.stringify(body),
       signal,
     });
-  return { app, upstream, reports, post };
+  const rows = () => db.select().from(usageEvents).where(eq(usageEvents.userId, userId));
+  return { app, upstream, recorded, post, token, userId, rows };
 }
 
 const waitFor = async (check: () => boolean) => {
-  for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 10));
+  for (let i = 0; i < 200 && !check(); i++) await new Promise((r) => setTimeout(r, 10));
   expect(check()).toBe(true);
 };
 
-describe("server", () => {
+describe("auth", () => {
   it("answers health checks without a token", async () => {
-    const { app } = setup();
+    const { app } = await setup();
     const res = await app.request("/health");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
   });
 
-  it("rejects missing and wrong tokens before calling OpenAI", async () => {
-    const { post, upstream } = setup();
-    for (const token of [null, "wrong"]) {
+  it("rejects missing, unknown and malformed tokens before calling OpenAI", async () => {
+    const { post, upstream } = await setup();
+    for (const token of [null, "nmb_not-a-real-token", "random"]) {
       const res = await post(validBody, token);
       expect(res.status).toBe(401);
       const json = (await res.json()) as { error: { type: string } };
@@ -66,8 +85,44 @@ describe("server", () => {
     expect(upstream.calls).toHaveLength(0);
   });
 
+  it("rejects revoked and expired tokens and blocked users", async () => {
+    const revoked = await setup();
+    await db
+      .update(apiTokens)
+      .set({ revokedAt: new Date() })
+      .where(eq(apiTokens.userId, revoked.userId));
+    expect((await revoked.post(validBody)).status).toBe(401);
+
+    const expired = await setup();
+    await db
+      .update(apiTokens)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(apiTokens.userId, expired.userId));
+    expect((await expired.post(validBody)).status).toBe(401);
+
+    const blocked = await setup();
+    await db.update(users).set({ status: "blocked" }).where(eq(users.id, blocked.userId));
+    expect((await blocked.post(validBody)).status).toBe(401);
+  });
+
+  it("stores only the hash and updates last use", async () => {
+    const { post, token, userId } = await setup();
+    await (await post(validBody)).text();
+    const [row] = await db.select().from(apiTokens).where(eq(apiTokens.userId, userId));
+    expect(row!.tokenHash).not.toContain(token);
+    expect(row!.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+    for (let i = 0; i < 50; i++) {
+      const [fresh] = await db.select().from(apiTokens).where(eq(apiTokens.userId, userId));
+      if (fresh!.lastUsedAt) return;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error("last_used_at was not set");
+  });
+});
+
+describe("proxy", () => {
   it("rejects models we do not pay for and non-streaming calls", async () => {
-    const { post, upstream } = setup();
+    const { post, upstream } = await setup();
     expect((await post({ ...validBody, model: "gpt-6-pro" })).status).toBe(400);
     expect((await post({ ...validBody, stream: false })).status).toBe(400);
     expect((await post("{not json")).status).toBe(400);
@@ -75,7 +130,7 @@ describe("server", () => {
   });
 
   it("forwards with the server key, forces store off and caps output", async () => {
-    const { post, upstream } = setup();
+    const { post, upstream } = await setup();
     await (
       await post({ ...validBody, store: true, max_output_tokens: 999_999, metadata: { x: 1 } })
     ).text();
@@ -88,46 +143,39 @@ describe("server", () => {
     expect(call.body.instructions).toBe("Be brief.");
   });
 
-  it("streams the bytes back unchanged and reports usage", async () => {
-    const { post, reports } = setup();
+  it("streams the bytes back unchanged", async () => {
+    const { post } = await setup();
     const res = await post(validBody);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     expect(await res.text()).toBe(SSE_EVENTS.map(sse).join(""));
-    expect(reports).toHaveLength(1);
-    expect(reports[0]!.end).toEqual({
-      kind: "finished",
-      status: "completed",
-      usage: { inputTokens: 1200, cachedTokens: 1000, outputTokens: 40 },
-    });
   });
 
   it("cancels the OpenAI stream when the client stops reading", async () => {
-    const { post, upstream, reports } = setup({ chunks: [sse(SSE_EVENTS[1])], hang: true });
+    const { post, upstream } = await setup({ chunks: [sse(SSE_EVENTS[1])], hang: true });
     const res = await post(validBody);
     const reader = res.body!.getReader();
     await reader.read();
     await reader.cancel();
     await waitFor(() => upstream.state.cancelled);
-    expect(reports[0]!.end).toEqual({ kind: "cancelled" });
   });
 
   it("passes the client abort signal to the OpenAI request", async () => {
-    const { post, upstream } = setup({ hang: true, chunks: [] });
+    const { post, upstream } = await setup({ hang: true, chunks: [] });
     const controller = new AbortController();
-    const res = await post(validBody, "dev-token", controller.signal);
+    const res = await post(validBody, undefined, controller.signal);
     expect(res.status).toBe(200);
     controller.abort();
     expect(upstream.calls[0]!.signal?.aborted).toBe(true);
   });
 
   it("passes request errors through but hides our own key problems", async () => {
-    const bad = setup({ status: 400, errorBody: '{"error":{"message":"bad input"}}' });
+    const bad = await setup({ status: 400, errorBody: '{"error":{"message":"bad input"}}' });
     const res400 = await bad.post(validBody);
     expect(res400.status).toBe(400);
     expect(await res400.text()).toContain("bad input");
 
-    const keyProblem = setup({
+    const keyProblem = await setup({
       status: 401,
       errorBody: '{"error":{"message":"Incorrect API key sk-..."}}',
     });
@@ -135,23 +183,93 @@ describe("server", () => {
     expect(res401.status).toBe(502);
     expect(await res401.text()).not.toContain("API key");
 
-    const busy = setup({ status: 429 });
+    const busy = await setup({ status: 429 });
     expect((await busy.post(validBody)).status).toBe(503);
 
-    const down = setup({ throws: true });
+    const down = await setup({ throws: true });
     expect((await down.post(validBody)).status).toBe(502);
   });
 
   it("refuses bodies over the size limit", async () => {
-    const { post, upstream } = setup();
+    const { post, upstream } = await setup();
     const big = { ...validBody, input: "x".repeat(MAX_BODY_BYTES + 10) };
     expect((await post(big)).status).toBe(413);
     expect(upstream.calls).toHaveLength(0);
   });
 });
 
+describe("ledger", () => {
+  it("records exact usage and cost for a finished call", async () => {
+    const { post, recorded, rows } = await setup();
+    await (await post(validBody)).text();
+    await waitFor(() => recorded.length === 1);
+    const [row] = await rows();
+    expect(row).toMatchObject({
+      model: "gpt-6-luna",
+      outcome: "finished",
+      responseStatus: "completed",
+      inputTokens: 1200,
+      cachedTokens: 1000,
+      outputTokens: 40,
+      estimated: false,
+    });
+    // 200 uncached x 0.1 + 1000 cached x 0.01 + 40 out x 0.5 = 50 micro-dollars
+    expect(row!.costMicroUsd).toBe(50);
+  });
+
+  it("records an estimate when the client cancels mid-stream", async () => {
+    const delta = { type: "response.output_text.delta", delta: "x".repeat(400) };
+    const { post, recorded, rows } = await setup({ chunks: [sse(delta)], hang: true });
+    const res = await post(validBody);
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+    await waitFor(() => recorded.length === 1);
+    const [row] = await rows();
+    expect(row).toMatchObject({ outcome: "cancelled", estimated: true, cachedTokens: 0 });
+    expect(row!.outputTokens).toBe(100);
+    expect(row!.inputTokens).toBeGreaterThan(0);
+    expect(row!.costMicroUsd).toBeGreaterThan(0);
+  });
+
+  it("records the input estimate when the client leaves before the model answers", async () => {
+    const { recorded, rows, token } = await setup();
+    const controller = new AbortController();
+    const slowApp = createApp({
+      config,
+      db,
+      log: silentLogger,
+      fetchUpstream: ((_url: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        })) as typeof fetch,
+      onRecorded: (report, error) => recorded.push({ report, error }),
+    });
+    const pending = slowApp.request("/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(validBody),
+      signal: controller.signal,
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    controller.abort();
+    expect((await pending).status).toBe(499);
+    await waitFor(() => recorded.length === 1);
+    const [row] = await rows();
+    expect(row).toMatchObject({ outcome: "client_left", estimated: true, outputTokens: 0 });
+  });
+
+  it("does not record failed upstream calls", async () => {
+    const { post, recorded, rows } = await setup({ status: 400 });
+    await (await post(validBody)).text();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(recorded).toHaveLength(0);
+    expect(await rows()).toHaveLength(0);
+  });
+});
+
 describe("FinalEventScanner", () => {
-  it("finds usage even when events are split across chunks", () => {
+  it("finds usage and counts streamed text even when events are split", () => {
     const scanner = new FinalEventScanner();
     const text = SSE_EVENTS.map(sse).join("").replace(/\n/g, "\r\n");
     const bytes = new TextEncoder().encode(text);
@@ -162,5 +280,6 @@ describe("FinalEventScanner", () => {
       cachedTokens: 1000,
       outputTokens: 40,
     });
+    expect(scanner.streamedChars).toBe("Hello there".length);
   });
 });

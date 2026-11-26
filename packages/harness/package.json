@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./cost": {
+      "types": "./dist/cost.d.ts",
+      "default": "./dist/cost.js"
     }
   },
   "files": [

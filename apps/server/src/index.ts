@@ -1,19 +1,30 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
+import { connectDb, sslFor } from "./db/client.js";
 import { jsonLogger } from "./log.js";
 
 const config = loadConfig();
-const app = createApp({ config });
+const dbOptions = { url: config.databaseUrl, caCert: config.databaseCaCert };
+const { db, close } = connectDb(dbOptions);
+const ssl = sslFor(dbOptions);
+if (typeof ssl === "object" && !ssl.rejectUnauthorized) {
+  jsonLogger("warn", "database TLS is encrypted but the certificate is not checked", {
+    fix: "set DATABASE_CA_CERT_PATH to the Supabase CA certificate",
+  });
+}
+const app = createApp({ config, db });
 
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   jsonLogger("info", "nimbus server listening", { port: info.port });
 });
 
-// Finish open streams before exiting
+// Finish open streams, then close the pool
 const shutdown = () => {
   jsonLogger("info", "shutting down");
-  server.close(() => process.exit(0));
+  server.close(() => {
+    void close().finally(() => process.exit(0));
+  });
   setTimeout(() => process.exit(0), 10_000).unref();
 };
 process.on("SIGINT", shutdown);

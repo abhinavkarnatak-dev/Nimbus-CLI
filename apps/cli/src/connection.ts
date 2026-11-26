@@ -9,8 +9,8 @@ export interface Connection {
 export function connect(env: NodeJS.ProcessEnv = process.env): Connection {
   const serverUrl = env.NIMBUS_SERVER_URL?.trim().replace(/\/+$/, "");
   if (serverUrl) {
-    const token = env.NIMBUS_DEV_TOKEN?.trim();
-    if (!token) throw new Error("NIMBUS_SERVER_URL is set but NIMBUS_DEV_TOKEN is not.");
+    const token = env.NIMBUS_TOKEN?.trim();
+    if (!token) throw new Error("NIMBUS_SERVER_URL is set but NIMBUS_TOKEN is not.");
     return {
       client: new OpenAIModelClient({ apiKey: token, baseURL: `${serverUrl}/v1` }),
       route: `server ${serverUrl.replace(/^https?:\/\//, "")}`,
@@ -18,7 +18,7 @@ export function connect(env: NodeJS.ProcessEnv = process.env): Connection {
   }
   const apiKey = env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
-    throw new Error("Set NIMBUS_SERVER_URL and NIMBUS_DEV_TOKEN, or OPENAI_API_KEY.");
+    throw new Error("Set NIMBUS_SERVER_URL and NIMBUS_TOKEN, or OPENAI_API_KEY.");
   }
   return { client: new OpenAIModelClient({ apiKey }), route: "direct to OpenAI" };
 }

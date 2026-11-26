@@ -16,7 +16,9 @@
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "model-check": "tsx --env-file=.env scripts/model-check.ts",
-    "dev:server": "tsx watch --env-file-if-exists=.env apps/server/src/index.ts",
+    "dev:server": "pnpm --filter @nimbus/harness build && tsx watch --env-file-if-exists=.env apps/server/src/index.ts",
+    "db:migrate": "pnpm --filter @nimbus/server db:migrate",
+    "db:token": "pnpm --filter @nimbus/harness build && pnpm --filter @nimbus/server db:token",
     "nimbus": "pnpm --filter @nimbus/harness build && tsx --tsconfig apps/cli/tsconfig.json --env-file-if-exists=.env apps/cli/src/index.tsx"
   },
   "devDependencies": {

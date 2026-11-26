@@ -12,6 +12,13 @@ export type StreamEnd =
 
 const FINAL_EVENTS = new Set(["response.completed", "response.incomplete", "response.failed"]);
 
+// Events whose delta is text the model produced
+const DELTA_EVENTS = new Set([
+  "response.output_text.delta",
+  "response.function_call_arguments.delta",
+  "response.reasoning_summary_text.delta",
+]);
+
 function readUsage(
   response: { usage?: Record<string, unknown> } | undefined,
 ): UpstreamUsage | null {
@@ -30,6 +37,7 @@ export class FinalEventScanner {
   #decoder = new TextDecoder();
   #buffer = "";
   final: Extract<StreamEnd, { kind: "finished" }> | null = null;
+  streamedChars = 0;
 
   push(chunk: Uint8Array): void {
     this.#scan(this.#decoder.decode(chunk, { stream: true }));
@@ -59,8 +67,12 @@ export class FinalEventScanner {
     try {
       const event = JSON.parse(data) as {
         type?: string;
+        delta?: unknown;
         response?: { status?: string; usage?: Record<string, unknown> };
       };
+      if (event.type && DELTA_EVENTS.has(event.type) && typeof event.delta === "string") {
+        this.streamedChars += event.delta.length;
+      }
       if (event.type && FINAL_EVENTS.has(event.type)) {
         this.final = {
           kind: "finished",
@@ -77,7 +89,7 @@ export class FinalEventScanner {
 // Relay upstream bytes as they are and report how the stream ended
 export function relay(
   upstream: ReadableStream<Uint8Array>,
-  onEnd: (end: StreamEnd) => void,
+  onEnd: (end: StreamEnd, streamedChars: number) => void,
 ): ReadableStream<Uint8Array> {
   const reader = upstream.getReader();
   const scanner = new FinalEventScanner();
@@ -85,7 +97,7 @@ export function relay(
   const finish = (end: StreamEnd) => {
     if (ended) return;
     ended = true;
-    onEnd(end);
+    onEnd(end, scanner.streamedChars);
   };
 
   return new ReadableStream<Uint8Array>({

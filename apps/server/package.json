@@ -8,11 +8,23 @@
     "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:token": "tsx --env-file-if-exists=../../.env scripts/create-token.ts"
   },
   "dependencies": {
     "@hono/node-server": "1.19.19",
+    "@nimbus/harness": "workspace:*",
+    "drizzle-orm": "0.45.4",
     "hono": "4.13.21",
+    "pg": "8.23.1",
+    "pino": "10.4.0",
     "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.17",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11"
   }
 }

@@ -5,7 +5,7 @@ describe("connect", () => {
   it("prefers the Nimbus server when it is configured", () => {
     const { route } = connect({
       NIMBUS_SERVER_URL: "http://localhost:8787/",
-      NIMBUS_DEV_TOKEN: "dev",
+      NIMBUS_TOKEN: "dev",
       OPENAI_API_KEY: "sk",
     });
     expect(route).toBe("server localhost:8787");
@@ -16,9 +16,7 @@ describe("connect", () => {
   });
 
   it("explains what is missing", () => {
-    expect(() => connect({ NIMBUS_SERVER_URL: "http://localhost:8787" })).toThrow(
-      "NIMBUS_DEV_TOKEN",
-    );
+    expect(() => connect({ NIMBUS_SERVER_URL: "http://localhost:8787" })).toThrow("NIMBUS_TOKEN");
     expect(() => connect({})).toThrow("OPENAI_API_KEY");
   });
 });

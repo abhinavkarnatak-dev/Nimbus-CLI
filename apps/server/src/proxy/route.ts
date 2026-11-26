@@ -1,14 +1,21 @@
-import { z } from "zod";
 import type { Context } from "hono";
+import { z } from "zod";
+import type { TokenOwner } from "../db/tokens.js";
+import type { AppEnv } from "../env.js";
 import { apiError } from "../errors.js";
 import type { Logger } from "../log.js";
 import { responsesRequestSchema, upstreamBody } from "./request.js";
 import { relay, type StreamEnd } from "./usage.js";
 
-export interface StreamReport {
+export type CallEnd = StreamEnd | { kind: "client_left" };
+
+export interface CallReport {
+  auth: TokenOwner;
   model: string;
-  end: StreamEnd;
+  end: CallEnd;
   durationMs: number;
+  requestChars: number;
+  streamedChars: number;
 }
 
 export interface ProxyDeps {
@@ -17,7 +24,7 @@ export interface ProxyDeps {
   maxOutputTokens: number;
   fetchUpstream: typeof fetch;
   log: Logger;
-  onStreamEnd?: (report: StreamReport) => void;
+  onCallEnd: (report: CallReport) => void;
 }
 
 // Upstream errors that are about the request itself
@@ -25,7 +32,7 @@ const CLIENT_ERRORS = new Set([400, 404, 413, 422]);
 
 // Forward one Responses API call and stream it back
 export function responsesHandler(deps: ProxyDeps) {
-  return async (c: Context) => {
+  return async (c: Context<AppEnv>) => {
     let json: unknown;
     try {
       json = await c.req.json();
@@ -38,9 +45,20 @@ export function responsesHandler(deps: ProxyDeps) {
       return apiError(c, 400, z.prettifyError(parsed.error), "invalid_request_error");
     }
 
+    const auth = c.get("auth");
     const model = parsed.data.model;
     const signal = c.req.raw.signal;
     const started = Date.now();
+    const body = JSON.stringify(upstreamBody(parsed.data, deps.maxOutputTokens));
+    const report = (end: CallEnd, streamedChars: number) =>
+      deps.onCallEnd({
+        auth,
+        model,
+        end,
+        durationMs: Date.now() - started,
+        requestChars: body.length,
+        streamedChars,
+      });
 
     let upstream: Response;
     try {
@@ -51,12 +69,13 @@ export function responsesHandler(deps: ProxyDeps) {
           "content-type": "application/json",
           accept: "text/event-stream",
         },
-        body: JSON.stringify(upstreamBody(parsed.data, deps.maxOutputTokens)),
+        body,
         signal,
       });
     } catch (error) {
       if (signal.aborted) {
         deps.log("info", "client left before the model answered", { model });
+        report({ kind: "client_left" }, 0);
         return new Response(null, { status: 499 });
       }
       deps.log("error", "model service unreachable", { model, error: (error as Error).message });
@@ -82,17 +101,17 @@ export function responsesHandler(deps: ProxyDeps) {
       return apiError(c, 502, "The model service returned an error.", "server_error");
     }
 
-    const body = relay(upstream.body, (end) => {
-      const durationMs = Date.now() - started;
+    const stream = relay(upstream.body, (end, streamedChars) => {
       deps.log(end.kind === "upstream_error" ? "warn" : "info", "stream ended", {
         model,
-        durationMs,
+        user: auth.userId,
+        durationMs: Date.now() - started,
         ...end,
       });
-      deps.onStreamEnd?.({ model, end, durationMs });
+      report(end, streamedChars);
     });
 
-    return new Response(body, {
+    return new Response(stream, {
       status: 200,
       headers: {
         "content-type": "text/event-stream; charset=utf-8",
