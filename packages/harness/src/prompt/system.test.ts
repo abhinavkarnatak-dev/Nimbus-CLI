@@ -20,6 +20,14 @@ describe("system prompt", () => {
     expect(detectEnvironment().date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
+  it("adds the web section only with web_search", () => {
+    const env = { os: "Linux", shell: "bash", cwd: "/app", date: "2026-11-26" };
+    expect(buildSystemPrompt(env, ["read_file"])).not.toContain("web_search");
+    const withWeb = buildSystemPrompt(env, ["read_file", "web_search"]);
+    expect(withWeb).toContain("You can search the web with web_search");
+    expect(withWeb).not.toMatch(/[\u2013\u2014]/);
+  });
+
   it("only mentions tools that exist", () => {
     const env = { os: "Linux", shell: "bash", cwd: "/app", date: "2026-11-26" };
     expect(buildSystemPrompt(env)).not.toContain("Tools:");

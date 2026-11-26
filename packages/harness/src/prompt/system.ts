@@ -75,6 +75,15 @@ Running commands:
   resets) unless the user clearly asked for exactly that.`
     : "";
 
+  const web = tools.has("web_search")
+    ? `
+
+Web:
+- You can search the web with web_search. Use it for any question about current
+  facts, news, people, prices or recent events, and for technical details that
+  may have changed, instead of answering from memory. Mention the sources you used.`
+    : "";
+
   return `
 
 Tools:
@@ -96,7 +105,7 @@ Working well:
 Answering:
 - Paths are relative to the working directory and use forward slashes.
 - When you mention code, include the path and line, like src/agent/session.ts:42.
-- Quote only the few lines that matter, not whole files.${editing}${commands}`;
+- Quote only the few lines that matter, not whole files.${editing}${commands}${web}`;
 }
 
 export function buildSystemPrompt(env: Environment, toolNames: readonly string[] = []): string {

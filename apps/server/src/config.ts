@@ -15,6 +15,9 @@ export interface ServerConfig {
   paused: boolean;
   maxConcurrent: number;
   ratePerMinute: number;
+  tavilyApiKey?: string;
+  tavilyBaseUrl: string;
+  searchMonthlyLimit: number;
 }
 
 export const usdToMicro = (usd: number) => Math.round(usd * 1_000_000);
@@ -54,5 +57,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     paused: env.NIMBUS_PAUSED === "true",
     maxConcurrent: Number(env.NIMBUS_MAX_CONCURRENT ?? 3),
     ratePerMinute: Number(env.NIMBUS_RATE_PER_MINUTE ?? 60),
+    tavilyApiKey: env.TAVILY_API_KEY?.trim() || undefined,
+    tavilyBaseUrl: (env.TAVILY_BASE_URL ?? "https://api.tavily.com").replace(/\/+$/, ""),
+    searchMonthlyLimit: Number(env.NIMBUS_SEARCH_MONTHLY_LIMIT ?? 900),
   };
 }

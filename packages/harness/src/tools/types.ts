@@ -3,12 +3,30 @@ import type { FileTracker } from "./file-state.js";
 import type { ProcessManager } from "./processes.js";
 import type { ShellInfo } from "./shell.js";
 
+export interface SearchRequest {
+  query: string;
+  topic: "general" | "news";
+  recency: "day" | "week" | "month" | "year" | null;
+  maxResults: number;
+}
+
+export interface SearchResult {
+  title: string;
+  url: string;
+  content: string;
+  publishedDate?: string;
+}
+
+// Web search is provided by the app, the harness never calls a provider itself
+export type SearchFn = (request: SearchRequest, signal: AbortSignal) => Promise<SearchResult[]>;
+
 export interface ToolContext {
   cwd: string;
   signal: AbortSignal;
   files: FileTracker;
   shell?: ShellInfo;
   processes?: ProcessManager;
+  search?: SearchFn;
 }
 
 export interface ToolResult {

@@ -70,8 +70,7 @@ export async function lastCachedRatio(
 }
 
 // Ledger row and the user's running total, together
-export async function recordUsage(db: Db, record: UsageRecord): Promise<number> {
-  const cost = costMicroUsd(record.model, record.counts);
+async function writeRow(db: Db, record: UsageRecord, cost: number): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.insert(usageEvents).values({
       userId: record.userId,
@@ -92,7 +91,48 @@ export async function recordUsage(db: Db, record: UsageRecord): Promise<number> 
       .set({ spentMicroUsd: sql`${users.spentMicroUsd} + ${cost}` })
       .where(eq(users.id, record.userId));
   });
+}
+
+export async function recordUsage(db: Db, record: UsageRecord): Promise<number> {
+  const cost = costMicroUsd(record.model, record.counts);
+  await writeRow(db, record, cost);
   return cost;
+}
+
+export const SEARCH_MODEL = "tavily-basic";
+// One basic search is one credit, priced at pay-as-you-go ($0.008)
+export const SEARCH_COST_MICRO_USD = 8000;
+
+export async function recordSearch(
+  db: Db,
+  search: { userId: string; tokenId: string; durationMs: number },
+): Promise<number> {
+  await writeRow(
+    db,
+    {
+      ...search,
+      model: SEARCH_MODEL,
+      outcome: "finished",
+      counts: { inputTokens: 0, cachedTokens: 0, outputTokens: 0 },
+      estimated: false,
+    },
+    SEARCH_COST_MICRO_USD,
+  );
+  return SEARCH_COST_MICRO_USD;
+}
+
+// Searches by everyone since the start of this month (UTC)
+export async function searchesThisMonth(db: Db): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<string>`count(*)` })
+    .from(usageEvents)
+    .where(
+      and(
+        eq(usageEvents.model, SEARCH_MODEL),
+        sql`${usageEvents.createdAt} >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'`,
+      ),
+    );
+  return Number(row?.count ?? 0);
 }
 
 // Everything spent by everyone, for the global budget

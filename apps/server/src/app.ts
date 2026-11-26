@@ -13,6 +13,7 @@ import { apiError } from "./errors.js";
 import { SpendTracker, UserLimits } from "./limits.js";
 import { jsonLogger, type Logger } from "./log.js";
 import { responsesHandler, type CallReport } from "./proxy/route.js";
+import { searchHandler } from "./search/route.js";
 
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 const TOUCH_EVERY_MS = 5 * 60 * 1000;
@@ -30,12 +31,16 @@ const DEFAULT_LIMITS: LimitSettings = {
   ratePerMinute: 60,
 };
 
+type SearchSettings = Pick<ServerConfig, "tavilyApiKey" | "tavilyBaseUrl" | "searchMonthlyLimit">;
+
 export interface AppDeps {
   config: Pick<ServerConfig, "openaiApiKey" | "openaiBaseUrl" | "maxOutputTokens"> &
-    Partial<LimitSettings>;
+    Partial<LimitSettings> &
+    Partial<SearchSettings>;
   db: Db;
   google: GoogleAuth;
   fetchUpstream?: typeof fetch;
+  fetchSearch?: typeof fetch;
   log?: Logger;
   // Resolves once the ledger write is done (used by tests)
   onRecorded?: (report: CallReport, error?: unknown) => void;
@@ -209,6 +214,20 @@ export function createApp(deps: AppDeps) {
       fetchUpstream: deps.fetchUpstream ?? fetch,
       log,
       onCallEnd,
+    }),
+  );
+
+  app.post(
+    "/v1/search",
+    guard,
+    searchHandler({
+      db,
+      apiKey: deps.config.tavilyApiKey,
+      baseUrl: deps.config.tavilyBaseUrl ?? "https://api.tavily.com",
+      monthlyLimit: deps.config.searchMonthlyLimit ?? 900,
+      fetchFn: deps.fetchSearch ?? fetch,
+      log,
+      onCost: (cost) => spend.add(cost),
     }),
   );
 

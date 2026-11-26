@@ -12,7 +12,7 @@ import { FileTracker } from "../tools/file-state.js";
 import { ProcessManager } from "../tools/processes.js";
 import type { ShellInfo } from "../tools/shell.js";
 import { truncateOutput } from "../tools/truncate.js";
-import type { Tool, ToolContext, ToolResult } from "../tools/types.js";
+import type { SearchFn, Tool, ToolContext, ToolResult } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
 
 export const DEFAULT_MAX_STEPS = 25;
@@ -24,6 +24,7 @@ export interface SessionOptions {
   cwd: string;
   tools?: Tool[];
   shell?: ShellInfo;
+  search?: SearchFn;
   maxSteps?: number;
   id?: string;
 }
@@ -57,6 +58,7 @@ export class Session {
   readonly #files = new FileTracker();
   readonly #processes = new ProcessManager();
   readonly #shell: ShellInfo | undefined;
+  readonly #search: SearchFn | undefined;
   #cost = 0;
 
   constructor(options: SessionOptions) {
@@ -68,6 +70,7 @@ export class Session {
     this.#tools = new Map((options.tools ?? []).map((tool) => [tool.name, tool]));
     this.#maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
     this.#shell = options.shell;
+    this.#search = options.search;
   }
 
   get history(): readonly HistoryItem[] {
@@ -98,6 +101,7 @@ export class Session {
       files: this.#files,
       shell: this.#shell,
       processes: this.#processes,
+      search: this.#search,
     };
     const toolSpecs = [...this.#tools.values()].map(({ name, description, parameters }) => ({
       name,

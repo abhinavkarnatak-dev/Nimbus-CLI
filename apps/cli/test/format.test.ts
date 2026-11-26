@@ -43,11 +43,16 @@ describe("format", () => {
       target: "proc_1",
     });
     expect(toolLabel("edit", "not json")).toEqual({ verb: "Edit", target: "" });
+    expect(toolLabel("web_search", '{"query":"who won the race"}')).toEqual({
+      verb: "Search",
+      target: '"who won the race"',
+    });
   });
 
   it("turns short tool summaries into sentences", () => {
     expect(describeResult("read_file", "40 lines", false)).toBe("Read 40 lines");
     expect(describeResult("glob", "3 files", false)).toBe("Found 3 files");
+    expect(describeResult("web_search", "5 results", false)).toBe("Found 5 results");
     expect(describeResult("edit", "+2 -1", false)).toBe("Changed with 2 additions and 1 removal");
     expect(describeResult("edit", "+1 -0", false)).toBe("Changed with 1 addition");
     expect(describeResult("write_file", "created, 5 lines", false)).toBe("Created with 5 lines");

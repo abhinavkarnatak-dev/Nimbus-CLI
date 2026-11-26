@@ -8,7 +8,9 @@ import {
   HARNESS_VERSION,
   type ModelClient,
   OpenAIModelClient,
+  type SearchFn,
   Session,
+  webSearchTool,
 } from "@nimbus/harness";
 import { render } from "ink";
 import open from "open";
@@ -18,6 +20,7 @@ import { defaultStore } from "./auth/credentials.js";
 import { browserLogin } from "./auth/login.js";
 import { parseArgs } from "./args.js";
 import { resolveSetup, routeLabel } from "./connection.js";
+import { serverSearch } from "./search.js";
 import { App } from "./ui/App.js";
 import { formatCost } from "./ui/format.js";
 
@@ -29,6 +32,7 @@ if (folder) process.chdir(resolve(folder));
 const setup = resolveSetup();
 let client: ModelClient;
 let auth: AuthController | null = null;
+let search: SearchFn | undefined;
 
 if (setup.mode === "server") {
   const { serverUrl } = setup;
@@ -51,6 +55,7 @@ if (setup.mode === "server") {
       }),
   });
   client = switchable;
+  search = serverSearch(auth);
 } else {
   client = new OpenAIModelClient({ apiKey: setup.apiKey });
 }
@@ -76,13 +81,15 @@ if (auth?.state.loggedIn && !auth.state.email) {
 
 const shell = detectShell();
 const env = detectEnvironment(shell);
+// Web search needs the Nimbus server, so it is only offered there
+const tools = search ? [...defaultTools, webSearchTool] : defaultTools;
 const instructions = buildSystemPrompt(
   env,
-  defaultTools.map((tool) => tool.name),
+  tools.map((tool) => tool.name),
 );
 
 const createSession = () =>
-  new Session({ client, model: MODEL, instructions, cwd: env.cwd, tools: defaultTools, shell });
+  new Session({ client, model: MODEL, instructions, cwd: env.cwd, tools, shell, search });
 
 let totalCost = 0;
 const app = render(

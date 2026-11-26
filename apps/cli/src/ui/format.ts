@@ -67,6 +67,8 @@ export function toolLabel(name: string, rawArgs: string): { verb: string; target
       return { verb: "Output", target: str("id") };
     case "kill_process":
       return { verb: "Stop", target: str("id") };
+    case "web_search":
+      return { verb: "Search", target: `"${clip(str("query"), 60)}"` };
     default:
       return { verb: name, target: clip(rawArgs, 60) };
   }
@@ -123,6 +125,7 @@ export function describeResult(name: string, summary: string, isError: boolean):
       return first === "empty file" ? "Empty file" : `Read ${first}`;
     case "glob":
     case "grep":
+    case "web_search":
       return `Found ${first}`;
     case "write_file":
       return first.replace(/^created, /, "Created with ");

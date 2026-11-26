@@ -64,6 +64,17 @@ export class AuthController {
     return this.#email;
   }
 
+  // Call a /v1 route with the current token
+  async authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+    if (!this.#token) throw new Error("Not logged in. Run /login.");
+    const headers = new Headers(init.headers);
+    headers.set("authorization", `Bearer ${this.#token}`);
+    return (this.#options.fetchFn ?? fetch)(`${this.#options.serverUrl}${path}`, {
+      ...init,
+      headers,
+    });
+  }
+
   // Trial credit as the server sees it
   async account(): Promise<Account | null> {
     if (!this.#token) return null;

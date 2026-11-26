@@ -18,6 +18,9 @@ export { costOf, MODEL_PRICES, type ModelPrice } from "./cost.js";
 export { buildSystemPrompt, detectEnvironment, type Environment } from "./prompt/system.js";
 export {
   defineTool,
+  type SearchFn,
+  type SearchRequest,
+  type SearchResult,
   type Tool,
   type ToolContext,
   type ToolDefinition,
@@ -34,6 +37,7 @@ export { ProcessManager, type ProcessSnapshot } from "./tools/processes.js";
 export { readFileTool } from "./tools/read-file.js";
 export { detectShell, type ShellInfo } from "./tools/shell.js";
 export { writeFileTool } from "./tools/write-file.js";
+export { webSearchTool } from "./tools/web-search.js";
 export { truncateOutput } from "./tools/truncate.js";
 
 import { bashOutputTool, bashTool, killProcessTool } from "./tools/bash.js";
