@@ -31,15 +31,19 @@ function fakeExchange() {
 }
 
 // Plays the browser: follows the start URL straight back to the CLI
-function fakeBrowser(exchange: ReturnType<typeof fakeExchange>, params: Record<string, string>) {
+function fakeBrowser(
+  exchange: ReturnType<typeof fakeExchange>,
+  params: Record<string, string>,
+  landed?: (location: string | null) => void,
+) {
   return async (startUrl: string) => {
     const url = new URL(startUrl);
     exchange.setChallenge(url.searchParams.get("challenge")!);
     const back = new URL(`http://127.0.0.1:${url.searchParams.get("port")}/callback`);
     back.searchParams.set("state", url.searchParams.get("state")!);
     for (const [key, value] of Object.entries(params)) back.searchParams.set(key, value);
-    const res = await fetch(back);
-    return res.text();
+    const res = await fetch(back, { redirect: "manual" });
+    landed?.(res.headers.get("location"));
   };
 }
 
@@ -59,6 +63,26 @@ describe("browserLogin", () => {
       /^http:\/\/server\.test\/auth\/cli\/start\?port=\d+&state=.+&challenge=.+/,
     );
     expect(exchange.seen[0]).toMatchObject({ code: "one-time", label: "cli test" });
+  });
+
+  it("sends the browser on to a Nimbus page, never leaving it on localhost", async () => {
+    const exchange = fakeExchange();
+    // The browser gets its answer a moment after the CLI is done
+    const landing = (params: Record<string, string>) => {
+      let resolve!: (where: string | null) => void;
+      const where = new Promise<string | null>((done) => (resolve = done));
+      const login = browserLogin({
+        serverUrl: "http://server.test",
+        label: "x",
+        fetchFn: exchange.fetchFn,
+        openBrowser: fakeBrowser(exchange, params, resolve),
+      }).catch(() => null);
+      return Promise.all([where, login]).then(([location]) => location);
+    };
+    expect(await landing({ code: "one-time" })).toBe("http://server.test/auth/cli/done");
+    expect(await landing({ error: "not_invited" })).toBe(
+      "http://server.test/auth/cli/failed?reason=not_invited",
+    );
   });
 
   it("sends the invite code to the server", async () => {

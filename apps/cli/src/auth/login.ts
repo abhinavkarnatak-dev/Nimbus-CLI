@@ -2,7 +2,6 @@ import { createHash, randomBytes } from "node:crypto";
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Credentials } from "./credentials.js";
-import { resultPage } from "./page.js";
 
 export const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -41,9 +40,13 @@ export async function browserLogin(options: LoginOptions): Promise<Credentials> 
     settle = { resolve, reject };
   });
 
-  const finish = (res: ServerResponse, ok: boolean, message: string) => {
-    res.writeHead(ok ? 200 : 400, { "content-type": "text/html; charset=utf-8" });
-    res.end(resultPage(ok, message));
+  // The tab ends on a Nimbus page, never on this local address
+  const finish = (res: ServerResponse, reason: string | null) => {
+    const target = reason
+      ? `${options.serverUrl}/auth/cli/failed?reason=${encodeURIComponent(reason)}`
+      : `${options.serverUrl}/auth/cli/done`;
+    res.writeHead(302, { location: target });
+    res.end();
   };
 
   const server = createServer((req, res) => {
@@ -56,17 +59,17 @@ export async function browserLogin(options: LoginOptions): Promise<Credentials> 
     const code = url.searchParams.get("code");
     if (error || !code) {
       const message = ERROR_TEXT[error ?? ""] ?? "Login failed. Try again.";
-      finish(res, false, message);
+      finish(res, error ?? "unknown");
       settle.reject(new LoginError(message));
       return;
     }
     void exchange(code)
       .then((credentials) => {
-        finish(res, true, `Logged in as ${credentials.email}. You can close this tab.`);
+        finish(res, null);
         settle.resolve(credentials);
       })
       .catch((exchangeError: Error) => {
-        finish(res, false, exchangeError.message);
+        finish(res, "exchange_failed");
         settle.reject(exchangeError);
       });
   });

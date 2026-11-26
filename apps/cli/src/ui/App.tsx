@@ -21,13 +21,11 @@ const EXIT_WINDOW_MS = 2000;
 interface Props {
   createSession: () => Session;
   info: HeaderInfo;
-  onExit: (totalCost: number) => void;
-  // Null in direct mode, where no login is needed
-  auth: AuthController | null;
+  auth: AuthController;
   loginOnStart?: boolean;
   inviteCode?: string;
-  // Null in direct mode; picks Nimbus credit or the user's own key
-  billing?: BillingController | null;
+  // Picks Nimbus credit or the user's own key
+  billing: BillingController;
 }
 
 function usageReport(usage: Usage, cost: number): string {
@@ -42,16 +40,14 @@ function usageReport(usage: Usage, cost: number): string {
 export function App({
   createSession,
   info,
-  onExit,
   auth,
   loginOnStart = false,
   inviteCode,
-  billing = null,
+  billing,
 }: Props) {
   const { exit } = useApp();
   const session = useRef<Session>(null as unknown as Session);
   if (!session.current) session.current = createSession();
-  const spentBefore = useRef(0);
 
   const [done, setDone] = useState<Item[]>(() => [{ kind: "header", id: newId() }]);
   const [live, setLive] = useState<Item[]>([]);
@@ -65,11 +61,11 @@ export function App({
   const [exitArmed, setExitArmed] = useState(false);
   const [usage, setUsage] = useState<Usage>({ ...session.current.usage });
   const [cost, setCost] = useState(0);
-  const [account, setAccount] = useState<string | null>(auth?.state.email ?? null);
-  const [loggedIn, setLoggedIn] = useState(auth?.state.loggedIn ?? true);
+  const [account, setAccount] = useState<string | null>(auth.state.email);
+  const [loggedIn, setLoggedIn] = useState(auth.state.loggedIn);
   const [login, setLogin] = useState<LoginPhase>({ phase: "idle" });
   const loginAbort = useRef<AbortController | null>(null);
-  const [route, setRoute] = useState<Route>(billing?.state.route ?? "nimbus");
+  const [route, setRoute] = useState<Route>(billing.state.route);
   const [panel, setPanel] = useState<BillingPanelState>({ kind: "none" });
 
   const controller = useRef<AbortController | null>(null);
@@ -97,7 +93,6 @@ export function App({
   // Change who pays; encrypted reasoning cannot cross accounts
   const switchRoute = useCallback(
     (next: Route, message?: string) => {
-      if (!billing) return;
       if (billing.use(next)) session.current.forgetReasoning();
       setRoute(billing.state.route);
       if (message) notice(message);
@@ -108,9 +103,8 @@ export function App({
   const quit = useCallback(async () => {
     controller.current?.abort();
     await session.current.dispose();
-    onExit(spentBefore.current + session.current.cost);
     exit();
-  }, [exit, onExit]);
+  }, [exit]);
 
   const runTurn = useCallback(
     async (text: string, echo = true, switched = false): Promise<void> => {
@@ -122,13 +116,13 @@ export function App({
       working.current = [];
       let retry = false;
       for await (const event of current.send(text, abort.signal)) {
-        const onKey = billing?.state.route === "key";
+        const onKey = billing.state.route === "key";
         // Out of money on one side: switch to the other once and resend
-        if (event.type === "error" && billing && !switched) {
+        if (event.type === "error" && !switched) {
           const nimbusOut = !onKey && event.status === 402 && billing.state.hasKey;
           const keyOut =
             onKey &&
-            auth?.state.loggedIn &&
+            auth.state.loggedIn &&
             (event.status === 401 || (event.status === 429 && event.code === "insufficient_quota"));
           if (nimbusOut) {
             switchRoute("key", "Nimbus credit used up, switched to your OpenAI key.");
@@ -163,7 +157,7 @@ export function App({
           working.current = applyEvent(working.current, event);
           working.current = applyEvent(working.current, {
             type: "error",
-            message: billing?.state.hasKey
+            message: billing.state.hasKey
               ? "Switch to your own OpenAI key with /use key."
               : "Add your own OpenAI key with /key to keep going.",
           });
@@ -171,7 +165,7 @@ export function App({
           continue;
         }
         // Token refused: forget it and ask to log in, keeping the message
-        if (event.type === "error" && event.status === 401 && auth && !onKey) {
+        if (event.type === "error" && event.status === 401 && !onKey) {
           auth.forget();
           setLoggedIn(false);
           setAccount(null);
@@ -202,7 +196,7 @@ export function App({
   // Browser login, then send the message that was waiting for it
   const beginLogin = useCallback(
     async (pending: string | null, code?: string) => {
-      if (!auth || loginAbort.current) return;
+      if (loginAbort.current) return;
       const abort = new AbortController();
       loginAbort.current = abort;
       setLogin({ phase: "waiting", url: null, pending });
@@ -236,11 +230,11 @@ export function App({
           return;
         case "/usage": {
           const report = usageReport(session.current.usage, session.current.cost);
-          if (billing?.state.route === "key") {
+          if (billing.state.route === "key") {
             notice(`${report}\nPaid with your OpenAI key (${billing.state.keyHint})`);
             return;
           }
-          if (!auth?.state.loggedIn) {
+          if (!auth.state.loggedIn) {
             notice(report);
             return;
           }
@@ -257,7 +251,6 @@ export function App({
         }
         case "/clear": {
           const old = session.current;
-          spentBefore.current += old.cost;
           void old.dispose();
           session.current = createSession();
           process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
@@ -268,24 +261,17 @@ export function App({
           return;
         }
         case "/login":
-          if (!auth) notice("No login needed: Nimbus is using your own OpenAI key.");
-          else void beginLogin(null, arg || undefined);
+          void beginLogin(null, arg || undefined);
           return;
         case "/logout":
-          if (!auth) {
-            notice("No login needed: Nimbus is using your own OpenAI key.");
-          } else {
-            void auth.logout().then(() => {
-              setLoggedIn(false);
-              setAccount(null);
-              notice("Logged out on this computer.");
-            });
-          }
+          void auth.logout().then(() => {
+            setLoggedIn(false);
+            setAccount(null);
+            notice("Logged out on this computer.");
+          });
           return;
         case "/key":
-          if (!billing) {
-            notice("Not available: Nimbus is using OPENAI_API_KEY from the environment.");
-          } else if (arg === "remove") {
+          if (arg === "remove") {
             const hadKey = billing.state.hasKey;
             if (billing.state.route === "key") session.current.forgetReasoning();
             billing.removeKey();
@@ -302,10 +288,6 @@ export function App({
           }
           return;
         case "/use": {
-          if (!billing) {
-            notice("Not available: Nimbus is using OPENAI_API_KEY from the environment.");
-            return;
-          }
           const pick = (next: Route) => {
             if (next === "key" && !billing.state.hasKey) {
               notice("No OpenAI key saved yet. Add one with /key.");
@@ -313,7 +295,7 @@ export function App({
             }
             const label = next === "key" ? "your OpenAI key" : "Nimbus credit";
             switchRoute(next, `Using ${label}.`);
-            if (next === "nimbus" && !auth?.state.loggedIn) {
+            if (next === "nimbus" && !auth.state.loggedIn) {
               setLogin({
                 phase: "prompt",
                 pending: null,
@@ -330,7 +312,7 @@ export function App({
             {
               route: "nimbus" as const,
               label: "Nimbus credit",
-              detail: auth?.state.loggedIn ? "checking..." : "needs login",
+              detail: auth.state.loggedIn ? "checking..." : "needs login",
               current: state.route === "nimbus",
             },
             {
@@ -345,7 +327,7 @@ export function App({
             options,
             selected: state.route === "key" ? 1 : 0,
           });
-          void auth?.account().then((info) => {
+          void auth.account().then((info) => {
             if (!info) return;
             const detail = `${formatCost(info.spentMicroUsd / 1e6)} of ${formatCost(info.quotaMicroUsd / 1e6)} used`;
             setPanel((prev) =>
@@ -379,7 +361,6 @@ export function App({
   // Save a pasted key; a bad key keeps the old one
   const submitKey = useCallback(
     async (key: string) => {
-      if (!billing) return;
       setPanel((prev) => (prev.kind === "key" ? { ...prev, checking: true, error: null } : prev));
       const before = billing.state.route;
       const result = await billing.setKey(key);
@@ -416,7 +397,7 @@ export function App({
         setDraft(fromText(text));
         return;
       }
-      if (auth && !loggedIn && route !== "key") {
+      if (!loggedIn && route !== "key") {
         append({ kind: "user", id: newId(), text });
         if (login.phase === "prompt") {
           void beginLogin(text);
@@ -433,7 +414,6 @@ export function App({
     },
     [
       append,
-      auth,
       beginLogin,
       loggedIn,
       login.phase,
@@ -456,7 +436,7 @@ export function App({
 
   // A token from NIMBUS_TOKEN has no saved email yet
   useEffect(() => {
-    if (auth && loggedIn && !account) {
+    if (loggedIn && !account) {
       void auth.refreshEmail().then((email) => email && setAccount(email));
     }
   }, [auth, loggedIn, account]);
@@ -544,7 +524,7 @@ export function App({
       ? `Queued: ${queued.slice(0, 40)} (esc to drop)`
       : route === "key"
         ? "your OpenAI key · /use to switch"
-        : auth && !loggedIn
+        : !loggedIn
           ? "not logged in · /login"
           : account
             ? `${account} · /help for commands`
@@ -558,7 +538,7 @@ export function App({
             <Header
               key={item.id}
               info={route === "key" ? { ...info, route: "your OpenAI key" } : info}
-              account={auth ? (account ?? (loggedIn ? undefined : "not logged in")) : undefined}
+              account={account ?? (loggedIn ? undefined : "not logged in")}
             />
           ) : (
             <ItemView key={item.id} item={item} />

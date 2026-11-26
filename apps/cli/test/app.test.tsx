@@ -23,6 +23,25 @@ async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
   }
 }
 
+// Logged in on Nimbus credit, for tests that are not about login or billing
+function signedIn() {
+  const switchable = new SwitchableModelClient(() => new FakeModelClient([]));
+  const auth = new AuthController({
+    serverUrl: "http://server.test",
+    store: memoryStore({ token: "nmb_t", email: "me@gmail.com" }),
+    client: switchable,
+    fetchFn: (async () => new Response(null, { status: 500 })) as unknown as typeof fetch,
+    login: async () => ({ token: "nmb_t", email: "me@gmail.com" }),
+  });
+  const billing = new BillingController({
+    keys: memorySecret(null),
+    settings: memorySettings({}),
+    client: new RoutingModelClient(switchable, () => new FakeModelClient([])),
+    model: "gpt-6-luna",
+  });
+  return { auth, billing };
+}
+
 describe("App", () => {
   it("runs a turn with a tool call and shows the reply", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "nimbus-app-"));
@@ -42,10 +61,9 @@ describe("App", () => {
           model: "gpt-6-luna",
           shell: "bash",
           cwd,
-          route: "direct to OpenAI",
+          route: "server",
         }}
-        onExit={() => {}}
-        auth={null}
+        {...signedIn()}
       />,
     );
     const all = () => frames.join("\n");
@@ -82,10 +100,9 @@ describe("App", () => {
           model: "gpt-6-luna",
           shell: "bash",
           cwd: tmpdir(),
-          route: "direct to OpenAI",
+          route: "server",
         }}
-        onExit={() => {}}
-        auth={null}
+        {...signedIn()}
       />,
     );
     await tick();
@@ -122,9 +139,8 @@ describe("App", () => {
     const { lastFrame, stdin, unmount } = render(
       <App
         createSession={createSession}
-        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir(), route: "direct" }}
-        onExit={() => {}}
-        auth={null}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir(), route: "server" }}
+        {...signedIn()}
       />,
     );
     const input = () => (lastFrame() ?? "").split("\n").find((line) => line.includes("> ")) ?? "";
@@ -177,7 +193,7 @@ describe("App", () => {
           route: "server",
         }}
         auth={auth}
-        onExit={() => {}}
+        billing={signedIn().billing}
       />,
     );
   }
@@ -250,7 +266,6 @@ describe("App", () => {
         info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
         auth={auth}
         billing={billing}
-        onExit={() => {}}
       />,
     );
     return { ...view, billing };

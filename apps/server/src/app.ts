@@ -34,6 +34,7 @@ const DEFAULT_LIMITS: LimitSettings = {
 type SearchSettings = Pick<ServerConfig, "tavilyApiKey" | "tavilyBaseUrl" | "searchMonthlyLimit">;
 
 export interface AppDeps {
+  siteUrl?: string;
   config: Pick<ServerConfig, "openaiApiKey" | "openaiBaseUrl" | "maxOutputTokens"> &
     Partial<LimitSettings> &
     Partial<SearchSettings>;
@@ -83,7 +84,7 @@ export function createApp(deps: AppDeps) {
   const app = new Hono<AppEnv>();
 
   app.get("/health", (c) => c.json({ ok: true }));
-  app.route("/auth", authRoutes({ db, google: deps.google, log }));
+  app.route("/auth", authRoutes({ db, google: deps.google, log, siteUrl: deps.siteUrl }));
 
   // Every /v1 route needs a valid token from the database
   app.use("/v1/*", async (c, next) => {

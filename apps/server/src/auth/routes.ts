@@ -19,6 +19,7 @@ export interface AuthDeps {
   db: Db;
   google: GoogleAuth;
   log: Logger;
+  siteUrl?: string;
 }
 
 const exchangeSchema = z.object({
@@ -26,6 +27,16 @@ const exchangeSchema = z.object({
   verifier: z.string().min(43).max(128),
   label: z.string().max(100).optional(),
 });
+
+const LOGIN_FAILED: Record<string, string> = {
+  access_denied: "Login was cancelled. Run nimbus login again when you are ready.",
+  not_invited: "Nimbus is invite only for now. Got an invite code? Run nimbus login --code <code>.",
+  invalid_code: "That invite code is not valid, used up or expired.",
+  email_not_verified: "Your Google email is not verified.",
+  account_blocked: "This account is blocked.",
+  google_failed: "Google login failed. Try again.",
+  unknown: "Something went wrong. Run nimbus login again.",
+};
 
 const invalidLink = messagePage(
   "Login link not valid",
@@ -100,6 +111,26 @@ export function authRoutes(deps: AuthDeps) {
     await authorizeAttempt(db, attempt.id, user.id, oneTimeCode);
     log("info", "login authorized", { user: user.id });
     return backToCli({ code: oneTimeCode });
+  });
+
+  // Where the CLI sends the browser at the end, website when we have one
+  app.get("/cli/done", (c) =>
+    deps.siteUrl
+      ? c.redirect(`${deps.siteUrl}/logged-in`, 302)
+      : c.html(
+          messagePage(
+            "You're in",
+            "You are logged in to Nimbus. Close this tab and go back to your terminal.",
+          ),
+        ),
+  );
+
+  app.get("/cli/failed", (c) => {
+    const reason = /^[a-z_]{1,40}$/.test(c.req.query("reason") ?? "")
+      ? c.req.query("reason")!
+      : "unknown";
+    if (deps.siteUrl) return c.redirect(`${deps.siteUrl}/login-failed?reason=${reason}`, 302);
+    return c.html(messagePage("Login failed", LOGIN_FAILED[reason] ?? LOGIN_FAILED.unknown!), 400);
   });
 
   app.post("/cli/exchange", async (c) => {

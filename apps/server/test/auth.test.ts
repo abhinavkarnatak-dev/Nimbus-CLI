@@ -220,3 +220,32 @@ describe("invites", () => {
     expect(row!.usedCount).toBe(0);
   });
 });
+
+describe("login result pages", () => {
+  it("shows our own page, or sends the browser to the website", async () => {
+    const plain = createApp({ config, db, google: fakeGoogle().google, log: silentLogger });
+    const done = await plain.request("/auth/cli/done");
+    expect(done.status).toBe(200);
+    expect(await done.text()).toContain("You are logged in to Nimbus");
+
+    const withSite = createApp({
+      config,
+      db,
+      google: fakeGoogle().google,
+      log: silentLogger,
+      siteUrl: "https://nimbus.test",
+    });
+    const toSite = await withSite.request("/auth/cli/done");
+    expect(toSite.headers.get("location")).toBe("https://nimbus.test/logged-in");
+    const failed = await withSite.request("/auth/cli/failed?reason=not_invited");
+    expect(failed.headers.get("location")).toBe(
+      "https://nimbus.test/login-failed?reason=not_invited",
+    );
+  });
+
+  it("never puts odd text from the URL into the page or redirect", async () => {
+    const plain = createApp({ config, db, google: fakeGoogle().google, log: silentLogger });
+    const res = await plain.request("/auth/cli/failed?reason=%3Cscript%3E");
+    expect(await res.text()).toContain("Something went wrong");
+  });
+});

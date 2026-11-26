@@ -18,6 +18,8 @@ export interface ServerConfig {
   tavilyApiKey?: string;
   tavilyBaseUrl: string;
   searchMonthlyLimit: number;
+  siteUrl?: string;
+  migrateOnStart: boolean;
 }
 
 export const usdToMicro = (usd: number) => Math.round(usd * 1_000_000);
@@ -60,5 +62,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     tavilyApiKey: env.TAVILY_API_KEY?.trim() || undefined,
     tavilyBaseUrl: (env.TAVILY_BASE_URL ?? "https://api.tavily.com").replace(/\/+$/, ""),
     searchMonthlyLimit: Number(env.NIMBUS_SEARCH_MONTHLY_LIMIT ?? 900),
+    // Website that shows the login result pages, when there is one
+    siteUrl: env.NIMBUS_SITE_URL?.trim().replace(/\/+$/, "") || undefined,
+    migrateOnStart: env.NIMBUS_MIGRATE_ON_START !== "false",
   };
 }

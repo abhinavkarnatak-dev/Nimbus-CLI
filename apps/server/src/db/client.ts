@@ -1,4 +1,7 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import pg from "pg";
 import { schema } from "./schema.js";
@@ -19,8 +22,17 @@ export function sslFor(options: DbOptions): pg.PoolConfig["ssl"] {
   return { rejectUnauthorized: false };
 }
 
+// apps/server/drizzle, found from src/db (tsx, tests) or dist (built bundle)
+export const MIGRATIONS_FOLDER = ["../drizzle", "../../drizzle"]
+  .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
+  .find((folder) => existsSync(`${folder}/meta/_journal.json`))!;
+
 // Small pool, the Supabase pooler limits clients
-export function connectDb(options: DbOptions): { db: Db; close: () => Promise<void> } {
+export function connectDb(options: DbOptions): {
+  db: Db;
+  migrate: () => Promise<void>;
+  close: () => Promise<void>;
+} {
   const url = new URL(options.url);
   // We set TLS ourselves, sslmode in the URL would override it
   url.searchParams.delete("sslmode");
@@ -31,5 +43,10 @@ export function connectDb(options: DbOptions): { db: Db; close: () => Promise<vo
     connectionTimeoutMillis: 10_000,
     ssl: sslFor(options),
   });
-  return { db: drizzle(pool, { schema }), close: () => pool.end() };
+  const db = drizzle(pool, { schema });
+  return {
+    db,
+    migrate: () => migrate(db, { migrationsFolder: MIGRATIONS_FOLDER }),
+    close: () => pool.end(),
+  };
 }

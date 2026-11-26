@@ -6,9 +6,7 @@ import {
   detectEnvironment,
   detectShell,
   HARNESS_VERSION,
-  type ModelClient,
   OpenAIModelClient,
-  type SearchFn,
   Session,
   webSearchTool,
 } from "@nimbus/harness";
@@ -27,7 +25,6 @@ import { parseArgs } from "./args.js";
 import { resolveSetup, routeLabel } from "./connection.js";
 import { serverSearch } from "./search.js";
 import { App } from "./ui/App.js";
-import { formatCost } from "./ui/format.js";
 
 const MODEL = "gpt-6-luna";
 
@@ -35,55 +32,36 @@ const { command, action, inviteCode, folder } = parseArgs(process.argv.slice(2))
 if (folder) process.chdir(resolve(folder));
 
 const setup = resolveSetup();
-let client: ModelClient;
-let auth: AuthController | null = null;
-let search: SearchFn | undefined;
-let billing: BillingController | null = null;
-
-if (setup.mode === "server") {
-  const { serverUrl } = setup;
-  const switchable = new SwitchableModelClient(
-    (token) => new OpenAIModelClient({ apiKey: token, baseURL: `${serverUrl}/v1` }),
-  );
-  auth = new AuthController({
-    serverUrl,
-    store: defaultStore(serverUrl),
-    client: switchable,
-    envToken: setup.envToken,
-    login: ({ onUrl, signal, inviteCode: code }) =>
-      browserLogin({
-        serverUrl,
-        label: `cli ${hostname()}`,
-        inviteCode: code,
-        openBrowser: (url) => open(url),
-        onUrl,
-        signal,
-      }),
-  });
-  const router = new RoutingModelClient(
-    switchable,
-    (key) => new OpenAIModelClient({ apiKey: key }),
-  );
-  billing = new BillingController({
-    keys: defaultSecretStore("openai-api-key"),
-    settings: fileSettings(),
-    client: router,
-    model: MODEL,
-  });
-  client = router;
-  search = serverSearch(auth);
-} else {
-  client = new OpenAIModelClient({ apiKey: setup.apiKey });
-}
-
-if (command === "login" && !auth) {
-  console.log("No login needed: Nimbus is using your own OpenAI key.");
-}
+const { serverUrl } = setup;
+const switchable = new SwitchableModelClient(
+  (token) => new OpenAIModelClient({ apiKey: token, baseURL: `${serverUrl}/v1` }),
+);
+const auth = new AuthController({
+  serverUrl,
+  store: defaultStore(serverUrl),
+  client: switchable,
+  envToken: setup.envToken,
+  login: ({ onUrl, signal, inviteCode: code }) =>
+    browserLogin({
+      serverUrl,
+      label: `cli ${hostname()}`,
+      inviteCode: code,
+      openBrowser: (url) => open(url),
+      onUrl,
+      signal,
+    }),
+});
+const client = new RoutingModelClient(switchable, (key) => new OpenAIModelClient({ apiKey: key }));
+const billing = new BillingController({
+  keys: defaultSecretStore("openai-api-key"),
+  settings: fileSettings(),
+  client,
+  model: MODEL,
+});
+const search = serverSearch(auth);
 
 if (command === "key" || command === "use") {
-  if (!billing) {
-    console.log("Not available: Nimbus is using OPENAI_API_KEY from the environment.");
-  } else if (command === "key" && action === "set") {
+  if (command === "key" && action === "set") {
     const key = await promptSecret("Paste your OpenAI API key (it stays on this computer): ");
     if (key) {
       const result = await billing.setKey(key);
@@ -113,7 +91,7 @@ if (command === "key" || command === "use") {
 }
 
 if (command === "logout") {
-  if (auth?.state.loggedIn) {
+  if (auth.state.loggedIn) {
     await auth.logout();
     console.log("Logged out on this computer.");
   } else {
@@ -123,14 +101,13 @@ if (command === "logout") {
 }
 
 // A NIMBUS_TOKEN has no saved email, ask the server once before drawing the header
-if (auth?.state.loggedIn && !auth.state.email) {
+if (auth.state.loggedIn && !auth.state.email) {
   await Promise.race([auth.refreshEmail(), new Promise((done) => setTimeout(done, 4000))]);
 }
 
 const shell = detectShell();
 const env = detectEnvironment(shell);
-// Web search needs the Nimbus server, so it is only offered there
-const tools = search ? [...defaultTools, webSearchTool] : defaultTools;
+const tools = [...defaultTools, webSearchTool];
 const instructions = buildSystemPrompt(
   env,
   tools.map((tool) => tool.name),
@@ -139,7 +116,6 @@ const instructions = buildSystemPrompt(
 const createSession = () =>
   new Session({ client, model: MODEL, instructions, cwd: env.cwd, tools, shell, search });
 
-let totalCost = 0;
 const app = render(
   <App
     createSession={createSession}
@@ -154,12 +130,8 @@ const app = render(
     billing={billing}
     loginOnStart={command === "login"}
     inviteCode={inviteCode}
-    onExit={(cost) => {
-      totalCost = cost;
-    }}
   />,
   { exitOnCtrlC: false },
 );
 
 await app.waitUntilExit();
-console.log(`\nSession cost ${formatCost(totalCost)}`);
