@@ -33,6 +33,15 @@ beforeAll(async () => {
   );
   await writeFile(join(root, "src", "cost.ts"), "export const PRICE = 1;\n// TODO: luna\n");
   await writeFile(join(root, "README.md"), "Nimbus session docs\n");
+  await mkdir(join(root, "big", "inner"), { recursive: true });
+  await mkdir(join(root, "tests"));
+  await writeFile(join(root, "big", "inner", "a.ts"), "FIXME\n".repeat(150));
+  await writeFile(join(root, "big", "b.ts"), "FIXME\n".repeat(100));
+  await writeFile(join(root, "tests", "c.ts"), "FIXME\n".repeat(10));
+  await mkdir(join(root, "many"));
+  await Promise.all(
+    Array.from({ length: 205 }, (_, i) => writeFile(join(root, "many", `f${i}.txt`), "NEEDLE\n")),
+  );
   await writeFile(join(root, "node_modules", "lib", "index.ts"), "export class Session {}\n");
   await writeFile(join(root, ".github", "ci.yml"), "name: CI session\n");
   await writeFile(join(root, ".gitignore"), "ignored.ts\n.turbo/\n");
@@ -127,5 +136,22 @@ describe("grep", () => {
 
   it("refuses paths outside the working directory", async () => {
     expect((await grep("x", { path: "../" })).output).toContain("outside the working directory");
+  });
+
+  it("summarizes overflowing results by folder", async () => {
+    const result = await grep("FIXME");
+    expect(result.output.split("\n").filter((line) => line.includes(":FIXME"))).toHaveLength(200);
+    expect(result.output).toContain("Showing the first 200 of 260 matches in 3 files");
+    expect(result.output).toMatch(/big\/inner\s+150/);
+    expect(result.output).toMatch(/big\s+100/);
+    expect(result.output).toMatch(/tests\s+10/);
+    expect(result.summary).toBe("200 of 260 matches");
+  });
+
+  it("summarizes overflowing file lists too", async () => {
+    const result = await grep("NEEDLE", { output_mode: "files" });
+    expect(result.output).toContain("Showing the first 200 of 205 files, sorted by path.");
+    expect(result.output).toMatch(/many\s+205/);
+    expect(result.summary).toBe("200 of 205 files");
   });
 });
