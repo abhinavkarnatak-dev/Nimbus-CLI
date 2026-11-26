@@ -104,6 +104,27 @@ describe("Session", () => {
     expect(session.cost).toBeCloseTo(1.2);
   });
 
+  it("passes the error code too, for example insufficient_quota", async () => {
+    const session = newSession(
+      new FakeModelClient([{ error: "No credit", status: 429, code: "insufficient_quota" }]),
+    );
+    const events = await collect(session.send("hi"));
+    expect(events).toEqual([
+      { type: "error", message: "No credit", status: 429, code: "insufficient_quota" },
+    ]);
+  });
+
+  it("drops encrypted reasoning from history and keeps the rest", async () => {
+    const session = newSession(new FakeModelClient([{ text: "hello" }]));
+    await collect(session.send("hi"));
+    (session.history as unknown[]).push({ type: "reasoning", encrypted_content: "x" });
+    session.forgetReasoning();
+    expect(session.history.some((item) => (item as { type?: string }).type === "reasoning")).toBe(
+      false,
+    );
+    expect(session.history.length).toBe(2);
+  });
+
   it("passes the HTTP status of a failed call on the error event", async () => {
     const session = newSession(new FakeModelClient([{ error: "Invalid token", status: 401 }]));
     const events = await collect(session.send("hi"));

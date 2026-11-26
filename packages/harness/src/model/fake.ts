@@ -8,7 +8,7 @@ export interface FakeToolCall {
 export type FakeTurn =
   | { text: string; usage?: Partial<Usage> }
   | { toolCalls: FakeToolCall[]; text?: string; usage?: Partial<Usage> }
-  | { error: string; status?: number };
+  | { error: string; status?: number; code?: string };
 
 export class FakeModelClient implements ModelClient {
   readonly requests: ModelRequest[] = [];
@@ -24,7 +24,9 @@ export class FakeModelClient implements ModelClient {
     this.requests.push(structuredClone(request));
     const turn = this.#turns.shift();
     if (!turn) throw new Error("FakeModelClient has no more turns");
-    if ("error" in turn) throw Object.assign(new Error(turn.error), { status: turn.status });
+    if ("error" in turn) {
+      throw Object.assign(new Error(turn.error), { status: turn.status, code: turn.code });
+    }
 
     const text = turn.text ?? "";
     for (const word of text.split(/(?<= )/).filter(Boolean)) {

@@ -1,5 +1,7 @@
 import type { Session, Usage } from "@nimbus/harness";
 import type { AuthController } from "../auth/controller.js";
+import type { BillingController } from "../billing/controller.js";
+import type { Route } from "../settings.js";
 import { Box, Static, useApp, useInput } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HELP_TEXT, matchCommands, parseCommand } from "./commands.js";
@@ -7,6 +9,7 @@ import { emptyDraft, fromText, type Draft } from "./editor.js";
 import { formatCost, formatTokens } from "./format.js";
 import { Header, type HeaderInfo } from "./Header.js";
 import { ItemView } from "./ItemView.js";
+import { BillingPanel, type BillingPanelState } from "./BillingPanel.js";
 import { LoginPanel, type LoginPhase } from "./LoginPanel.js";
 import { PromptInput } from "./PromptInput.js";
 import { CommandMenu, StatusBar, WorkingLine } from "./StatusBar.js";
@@ -23,6 +26,8 @@ interface Props {
   auth: AuthController | null;
   loginOnStart?: boolean;
   inviteCode?: string;
+  // Null in direct mode; picks Nimbus credit or the user's own key
+  billing?: BillingController | null;
 }
 
 function usageReport(usage: Usage, cost: number): string {
@@ -41,6 +46,7 @@ export function App({
   auth,
   loginOnStart = false,
   inviteCode,
+  billing = null,
 }: Props) {
   const { exit } = useApp();
   const session = useRef<Session>(null as unknown as Session);
@@ -63,6 +69,8 @@ export function App({
   const [loggedIn, setLoggedIn] = useState(auth?.state.loggedIn ?? true);
   const [login, setLogin] = useState<LoginPhase>({ phase: "idle" });
   const loginAbort = useRef<AbortController | null>(null);
+  const [route, setRoute] = useState<Route>(billing?.state.route ?? "nimbus");
+  const [panel, setPanel] = useState<BillingPanelState>({ kind: "none" });
 
   const controller = useRef<AbortController | null>(null);
   const working = useRef<Item[]>([]);
@@ -86,6 +94,17 @@ export function App({
     [append],
   );
 
+  // Change who pays; encrypted reasoning cannot cross accounts
+  const switchRoute = useCallback(
+    (next: Route, message?: string) => {
+      if (!billing) return;
+      if (billing.use(next)) session.current.forgetReasoning();
+      setRoute(billing.state.route);
+      if (message) notice(message);
+    },
+    [billing, notice],
+  );
+
   const quit = useCallback(async () => {
     controller.current?.abort();
     await session.current.dispose();
@@ -94,16 +113,65 @@ export function App({
   }, [exit, onExit]);
 
   const runTurn = useCallback(
-    async (text: string, echo = true) => {
+    async (text: string, echo = true, switched = false): Promise<void> => {
       const current = session.current;
       const abort = new AbortController();
       controller.current = abort;
       setRunningSince(Date.now());
       if (echo) append({ kind: "user", id: newId(), text });
       working.current = [];
+      let retry = false;
       for await (const event of current.send(text, abort.signal)) {
+        const onKey = billing?.state.route === "key";
+        // Out of money on one side: switch to the other once and resend
+        if (event.type === "error" && billing && !switched) {
+          const nimbusOut = !onKey && event.status === 402 && billing.state.hasKey;
+          const keyOut =
+            onKey &&
+            auth?.state.loggedIn &&
+            (event.status === 401 || (event.status === 429 && event.code === "insufficient_quota"));
+          if (nimbusOut) {
+            switchRoute("key", "Nimbus credit used up, switched to your OpenAI key.");
+            retry = true;
+            continue;
+          }
+          if (keyOut) {
+            switchRoute(
+              "nimbus",
+              event.status === 401
+                ? "OpenAI rejected your key, switched to Nimbus credit."
+                : "Your OpenAI key is out of credit, switched to Nimbus credit.",
+            );
+            retry = true;
+            continue;
+          }
+        }
+        const keyProblem =
+          onKey &&
+          event.type === "error" &&
+          (event.status === 401 || (event.status === 429 && event.code === "insufficient_quota"));
+        if (keyProblem) {
+          working.current = applyEvent(working.current, event);
+          working.current = applyEvent(working.current, {
+            type: "error",
+            message: "Update your key with /key, or switch to Nimbus credit with /use nimbus.",
+          });
+          flush();
+          continue;
+        }
+        if (event.type === "error" && event.status === 402 && !onKey) {
+          working.current = applyEvent(working.current, event);
+          working.current = applyEvent(working.current, {
+            type: "error",
+            message: billing?.state.hasKey
+              ? "Switch to your own OpenAI key with /use key."
+              : "Add your own OpenAI key with /key to keep going.",
+          });
+          flush();
+          continue;
+        }
         // Token refused: forget it and ask to log in, keeping the message
-        if (event.type === "error" && event.status === 401 && auth) {
+        if (event.type === "error" && event.status === 401 && auth && !onKey) {
           auth.forget();
           setLoggedIn(false);
           setAccount(null);
@@ -126,8 +194,9 @@ export function App({
       flush(true);
       controller.current = null;
       setRunningSince(null);
+      if (retry) await runTurn(text, false, true);
     },
-    [append, flush, auth],
+    [append, flush, auth, billing, switchRoute],
   );
 
   // Browser login, then send the message that was waiting for it
@@ -167,6 +236,10 @@ export function App({
           return;
         case "/usage": {
           const report = usageReport(session.current.usage, session.current.cost);
+          if (billing?.state.route === "key") {
+            notice(`${report}\nPaid with your OpenAI key (${billing.state.keyHint})`);
+            return;
+          }
           if (!auth?.state.loggedIn) {
             notice(report);
             return;
@@ -209,6 +282,85 @@ export function App({
             });
           }
           return;
+        case "/key":
+          if (!billing) {
+            notice("Not available: Nimbus is using OPENAI_API_KEY from the environment.");
+          } else if (arg === "remove") {
+            const hadKey = billing.state.hasKey;
+            if (billing.state.route === "key") session.current.forgetReasoning();
+            billing.removeKey();
+            setRoute(billing.state.route);
+            notice(hadKey ? "Removed your OpenAI key. Using Nimbus credit." : "No key was saved.");
+          } else {
+            setDraft(emptyDraft);
+            setPanel({
+              kind: "key",
+              current: billing.state.keyHint,
+              checking: false,
+              error: null,
+            });
+          }
+          return;
+        case "/use": {
+          if (!billing) {
+            notice("Not available: Nimbus is using OPENAI_API_KEY from the environment.");
+            return;
+          }
+          const pick = (next: Route) => {
+            if (next === "key" && !billing.state.hasKey) {
+              notice("No OpenAI key saved yet. Add one with /key.");
+              return;
+            }
+            const label = next === "key" ? "your OpenAI key" : "Nimbus credit";
+            switchRoute(next, `Using ${label}.`);
+            if (next === "nimbus" && !auth?.state.loggedIn) {
+              setLogin({
+                phase: "prompt",
+                pending: null,
+                reason: "Log in to use Nimbus credit.",
+              });
+            }
+          };
+          if (arg === "nimbus" || arg === "key") {
+            pick(arg);
+            return;
+          }
+          const state = billing.state;
+          const options = [
+            {
+              route: "nimbus" as const,
+              label: "Nimbus credit",
+              detail: auth?.state.loggedIn ? "checking..." : "needs login",
+              current: state.route === "nimbus",
+            },
+            {
+              route: "key" as const,
+              label: "Your OpenAI key",
+              detail: state.keyHint ?? "not added, use /key",
+              current: state.route === "key",
+            },
+          ];
+          setPanel({
+            kind: "use",
+            options,
+            selected: state.route === "key" ? 1 : 0,
+          });
+          void auth?.account().then((info) => {
+            if (!info) return;
+            const detail = `${formatCost(info.spentMicroUsd / 1e6)} of ${formatCost(info.quotaMicroUsd / 1e6)} used`;
+            setPanel((prev) =>
+              prev.kind === "use"
+                ? {
+                    ...prev,
+                    options: prev.options.map((option) =>
+                      option.route === "nimbus" ? { ...option, detail } : option,
+                    ),
+                  }
+                : prev,
+            );
+          });
+          return;
+        }
         case "/exit":
           void quit();
           return;
@@ -221,12 +373,38 @@ export function App({
           });
       }
     },
-    [append, auth, beginLogin, createSession, notice, quit],
+    [append, auth, beginLogin, billing, createSession, notice, quit, switchRoute],
+  );
+
+  // Save a pasted key; a bad key keeps the old one
+  const submitKey = useCallback(
+    async (key: string) => {
+      if (!billing) return;
+      setPanel((prev) => (prev.kind === "key" ? { ...prev, checking: true, error: null } : prev));
+      const before = billing.state.route;
+      const result = await billing.setKey(key);
+      if (!result.ok) {
+        setPanel((prev) =>
+          prev.kind === "key" ? { ...prev, checking: false, error: result.message } : prev,
+        );
+        return;
+      }
+      if (before !== billing.state.route) session.current.forgetReasoning();
+      setRoute(billing.state.route);
+      setPanel({ kind: "none" });
+      notice(`✓ Saved your OpenAI key (${billing.state.keyHint}). Using it from now on.`);
+    },
+    [billing, notice],
   );
 
   const submit = useCallback(
     (text: string) => {
       setDraft(emptyDraft);
+      // A key never goes into history or the transcript
+      if (panel.kind === "key") {
+        if (!panel.checking) void submitKey(text);
+        return;
+      }
       setHistory((prev) => (prev.at(-1) === text ? prev : [...prev, text]));
       const command = parseCommand(text);
       if (command) {
@@ -238,7 +416,7 @@ export function App({
         setDraft(fromText(text));
         return;
       }
-      if (auth && !loggedIn) {
+      if (auth && !loggedIn && route !== "key") {
         append({ kind: "user", id: newId(), text });
         if (login.phase === "prompt") {
           void beginLogin(text);
@@ -253,7 +431,19 @@ export function App({
       }
       void runTurn(text);
     },
-    [append, auth, beginLogin, loggedIn, login.phase, notice, runCommand, runTurn],
+    [
+      append,
+      auth,
+      beginLogin,
+      loggedIn,
+      login.phase,
+      notice,
+      panel,
+      route,
+      runCommand,
+      runTurn,
+      submitKey,
+    ],
   );
 
   // nimbus login: open the browser once, right away
@@ -289,6 +479,27 @@ export function App({
   }, [exitArmed]);
 
   useInput((input, key) => {
+    if (panel.kind === "use") {
+      if (key.upArrow || key.downArrow) {
+        const step = key.upArrow ? -1 : 1;
+        const count = panel.options.length;
+        setPanel({ ...panel, selected: (panel.selected + step + count) % count });
+      } else if (key.return) {
+        const option = panel.options[panel.selected];
+        setPanel({ kind: "none" });
+        if (option && !option.current) runCommand("/use", option.route);
+      } else if (key.escape) {
+        setPanel({ kind: "none" });
+      }
+      return;
+    }
+    if (panel.kind === "key" && key.escape) {
+      if (!panel.checking) {
+        setPanel({ kind: "none" });
+        setDraft(emptyDraft);
+      }
+      return;
+    }
     if (login.phase === "prompt" && key.return && !draft.value) {
       void beginLogin(login.pending);
       return;
@@ -331,11 +542,13 @@ export function App({
     ? "Press Ctrl+C again to exit"
     : queued
       ? `Queued: ${queued.slice(0, 40)} (esc to drop)`
-      : auth && !loggedIn
-        ? "not logged in · /login"
-        : account
-          ? `${account} · /help for commands`
-          : "/help for commands";
+      : route === "key"
+        ? "your OpenAI key · /use to switch"
+        : auth && !loggedIn
+          ? "not logged in · /login"
+          : account
+            ? `${account} · /help for commands`
+            : "/help for commands";
 
   return (
     <Box flexDirection="column">
@@ -344,7 +557,7 @@ export function App({
           item.kind === "header" ? (
             <Header
               key={item.id}
-              info={info}
+              info={route === "key" ? { ...info, route: "your OpenAI key" } : info}
               account={auth ? (account ?? (loggedIn ? undefined : "not logged in")) : undefined}
             />
           ) : (
@@ -355,17 +568,22 @@ export function App({
       {live.map((item) => (item.kind === "header" ? null : <ItemView key={item.id} item={item} />))}
       {runningSince !== null && <WorkingLine since={runningSince} />}
       <LoginPanel login={login} />
+      <BillingPanel panel={panel} />
       <Box marginTop={1} flexDirection="column">
         <PromptInput
           draft={draft}
           onChange={setDraft}
           onSubmit={submit}
           history={history}
-          placeholder="Ask Nimbus to read, fix or build something"
+          placeholder={
+            panel.kind === "key" ? "sk-..." : "Ask Nimbus to read, fix or build something"
+          }
           menu={menu}
           selected={selected}
           onSelect={setMenuIndex}
           onBrowsingChange={setBrowsingHistory}
+          mask={panel.kind === "key"}
+          active={panel.kind !== "use"}
         />
         {menu.length > 0 ? (
           <CommandMenu commands={menu} selected={selected} />

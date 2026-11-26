@@ -9,6 +9,8 @@ export const COMMANDS: SlashCommand[] = [
   { name: "/usage", description: "Show tokens and cost for this session" },
   { name: "/login", description: "Log in with Google, optionally with an invite code" },
   { name: "/logout", description: "Log out on this computer" },
+  { name: "/key", description: "Add or replace your own OpenAI key (/key remove)" },
+  { name: "/use", description: "Pay with Nimbus credit or your own key" },
   { name: "/exit", description: "Quit Nimbus" },
 ];
 

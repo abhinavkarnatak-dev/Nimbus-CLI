@@ -39,10 +39,13 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-// HTTP status from SDK errors, so the UI can react (for example 401)
-function errorStatus(error: unknown): number | undefined {
-  const status = (error as { status?: unknown } | null)?.status;
-  return typeof status === "number" ? status : undefined;
+// HTTP status and error code from SDK errors, so the UI can react
+function errorDetails(error: unknown): { status?: number; code?: string } {
+  const { status, code } = (error ?? {}) as { status?: unknown; code?: unknown };
+  return {
+    ...(typeof status === "number" ? { status } : {}),
+    ...(typeof code === "string" ? { code } : {}),
+  };
 }
 
 export class Session {
@@ -83,6 +86,12 @@ export class Session {
 
   get cost(): number {
     return this.#cost;
+  }
+
+  // Encrypted reasoning only works with the account that made it
+  forgetReasoning(): void {
+    const kept = this.#history.filter((item) => (item as { type?: string }).type !== "reasoning");
+    this.#history.splice(0, this.#history.length, ...kept);
   }
 
   // Stop background processes we started
@@ -183,8 +192,7 @@ export class Session {
         yield { type: "turn_cancelled" };
         return;
       }
-      const status = errorStatus(error);
-      yield { type: "error", message: errorMessage(error), ...(status ? { status } : {}) };
+      yield { type: "error", message: errorMessage(error), ...errorDetails(error) };
     }
   }
 

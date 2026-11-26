@@ -1,19 +1,30 @@
+export type Command = "login" | "logout" | "key" | "use";
+
 export interface CliArgs {
-  command: "login" | "logout" | null;
+  command: Command | null;
+  // key: set | remove, use: nimbus | key
+  action?: string;
   inviteCode?: string;
   folder?: string;
 }
 
-// nimbus [login|logout] [--code CODE] [folder]
+const COMMANDS: Command[] = ["login", "logout", "key", "use"];
+const ACTIONS: Partial<Record<Command, string[]>> = {
+  key: ["set", "remove"],
+  use: ["nimbus", "key"],
+};
+
+// nimbus [login|logout|key [set|remove]|use nimbus|key] [--code CODE] [folder]
 export function parseArgs(args: string[]): CliArgs {
   const rest = [...args];
-  const command = rest[0] === "login" || rest[0] === "logout" ? rest[0] : null;
-  if (command) rest.shift();
+  const command = COMMANDS.includes(rest[0] as Command) ? (rest.shift() as Command) : null;
+  let action: string | undefined;
+  if (command && ACTIONS[command]?.includes(rest[0] ?? "")) action = rest.shift();
   let inviteCode: string | undefined;
   const codeAt = rest.indexOf("--code");
   if (codeAt >= 0) {
     inviteCode = rest[codeAt + 1];
     rest.splice(codeAt, 2);
   }
-  return { command, inviteCode, folder: rest[0] };
+  return { command, ...(action ? { action } : {}), inviteCode, folder: rest[0] };
 }

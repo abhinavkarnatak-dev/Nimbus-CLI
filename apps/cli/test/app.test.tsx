@@ -7,6 +7,10 @@ import { describe, expect, it } from "vitest";
 import { SwitchableModelClient } from "../src/auth/client.js";
 import { AuthController } from "../src/auth/controller.js";
 import { memoryStore } from "../src/auth/credentials.js";
+import { memorySecret } from "../src/auth/secrets.js";
+import { BillingController } from "../src/billing/controller.js";
+import { RoutingModelClient } from "../src/billing/router.js";
+import { memorySettings } from "../src/settings.js";
 import { App } from "../src/ui/App.js";
 
 const tick = (ms = 80) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -206,6 +210,150 @@ describe("App", () => {
     await tick();
     stdin.write("\r");
     await waitFor(() => (lastFrame() ?? "").includes("expired or was revoked"));
+    unmount();
+  });
+
+  const KEY = "sk-test_aaaaaaaaaaaaaaaaaaaaaaaa1b2c";
+
+  function billingSetup(options: {
+    nimbus: ConstructorParameters<typeof FakeModelClient>[0];
+    own?: ConstructorParameters<typeof FakeModelClient>[0];
+    savedKey?: string | null;
+    use?: "nimbus" | "key";
+    loggedIn?: boolean;
+  }) {
+    const nimbusModel = new FakeModelClient(options.nimbus);
+    const ownModel = new FakeModelClient(options.own ?? []);
+    const switchable = new SwitchableModelClient(() => nimbusModel);
+    const auth = new AuthController({
+      serverUrl: "http://server.test",
+      store: memoryStore(
+        options.loggedIn === false ? null : { token: "nmb_t", email: "me@gmail.com" },
+      ),
+      client: switchable,
+      fetchFn: (async () => Response.json({})) as unknown as typeof fetch,
+      login: async () => ({ token: "nmb_new", email: "me@gmail.com" }),
+    });
+    const router = new RoutingModelClient(switchable, () => ownModel);
+    const billing = new BillingController({
+      keys: memorySecret(options.savedKey ?? null),
+      settings: memorySettings(options.use ? { use: options.use } : {}),
+      client: router,
+      model: "gpt-6-luna",
+      fetchFn: (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch,
+    });
+    const createSession = () =>
+      new Session({ client: router, model: "gpt-6-luna", instructions: "test", cwd: tmpdir() });
+    const view = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        auth={auth}
+        billing={billing}
+        onExit={() => {}}
+      />,
+    );
+    return { ...view, billing };
+  }
+
+  it("saves a pasted key without ever showing it", async () => {
+    const { lastFrame, frames, stdin, billing, unmount } = billingSetup({ nimbus: [] });
+    await tick();
+    stdin.write("/key");
+    await tick();
+    stdin.write("\r");
+    await tick();
+    expect(lastFrame()).toContain("Paste your OpenAI API key");
+    stdin.write(KEY);
+    await tick();
+    expect(frames.join("\n")).not.toContain(KEY);
+    expect(lastFrame()).toContain("•••••");
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Saved your OpenAI key (sk-...1b2c)"));
+    expect(billing.state.route).toBe("key");
+    stdin.write("\u001B[A");
+    await tick();
+    expect(frames.join("\n")).not.toContain(KEY);
+    unmount();
+  });
+
+  it("switches to the user's key when Nimbus credit runs out", async () => {
+    const { lastFrame, stdin, billing, unmount } = billingSetup({
+      nimbus: [{ error: "Your Nimbus trial credit is used up ($0.50).", status: 402 }],
+      own: [{ text: "Answer paid by your key" }],
+      savedKey: KEY,
+    });
+    await tick();
+    stdin.write("hello");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Answer paid by your key"));
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("switched to your OpenAI key");
+    expect(frame.match(/› hello/g)).toHaveLength(1);
+    expect(billing.state.route).toBe("key");
+    unmount();
+  });
+
+  it("switches back to Nimbus credit when the key runs out", async () => {
+    const { lastFrame, stdin, billing, unmount } = billingSetup({
+      nimbus: [{ text: "Answer paid by Nimbus" }],
+      own: [{ error: "You exceeded your quota", status: 429, code: "insufficient_quota" }],
+      savedKey: KEY,
+      use: "key",
+    });
+    await tick();
+    stdin.write("hello");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Answer paid by Nimbus"));
+    expect(lastFrame()).toContain("out of credit, switched to Nimbus credit");
+    expect(billing.state.route).toBe("nimbus");
+    unmount();
+  });
+
+  it("suggests /key when Nimbus credit runs out and there is no key", async () => {
+    const { lastFrame, stdin, unmount } = billingSetup({
+      nimbus: [{ error: "Your Nimbus trial credit is used up ($0.50).", status: 402 }],
+    });
+    await tick();
+    stdin.write("hello");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Add your own OpenAI key with /key"));
+    unmount();
+  });
+
+  it("works with the user's key without a login", async () => {
+    const { lastFrame, stdin, unmount } = billingSetup({
+      nimbus: [],
+      own: [{ text: "No login needed" }],
+      savedKey: KEY,
+      use: "key",
+      loggedIn: false,
+    });
+    await tick();
+    stdin.write("hello");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("No login needed"));
+    expect(lastFrame()).not.toContain("Log in to start");
+    unmount();
+  });
+
+  it("switches with the /use menu", async () => {
+    const { lastFrame, stdin, billing, unmount } = billingSetup({ nimbus: [], savedKey: KEY });
+    await tick();
+    stdin.write("/use");
+    await tick();
+    stdin.write("\r");
+    await tick();
+    expect(lastFrame()).toContain("Pay for model calls with");
+    stdin.write("\u001B[B");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => billing.state.route === "key");
+    expect(lastFrame()).toContain("Using your OpenAI key.");
     unmount();
   });
 });

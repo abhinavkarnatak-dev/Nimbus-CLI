@@ -30,4 +30,11 @@ describe("parseArgs", () => {
     });
     expect(parseArgs([])).toEqual({ command: null, inviteCode: undefined, folder: undefined });
   });
+
+  it("reads key and use with their action", () => {
+    expect(parseArgs(["key", "set"])).toMatchObject({ command: "key", action: "set" });
+    expect(parseArgs(["key"])).toMatchObject({ command: "key", folder: undefined });
+    expect(parseArgs(["use", "key"])).toMatchObject({ command: "use", action: "key" });
+    expect(parseArgs(["use", "app"])).toMatchObject({ command: "use", folder: "app" });
+  });
 });

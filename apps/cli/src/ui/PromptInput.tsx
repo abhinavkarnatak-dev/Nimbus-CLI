@@ -28,6 +28,10 @@ interface Props {
   onSelect: (index: number) => void;
   // True while Up/Down is walking through history
   onBrowsingChange: (browsing: boolean) => void;
+  // Show dots instead of the text, for secrets
+  mask?: boolean;
+  // Off while another panel (like a menu) takes the keys
+  active?: boolean;
 }
 
 // Draw the text with an inverse cursor
@@ -50,6 +54,8 @@ export function PromptInput({
   selected,
   onSelect,
   onBrowsingChange,
+  mask = false,
+  active = true,
 }: Props) {
   // Index into history while browsing, saved draft to restore
   const browsing = useRef<{ index: number; saved: Draft } | null>(null);
@@ -66,93 +72,101 @@ export function PromptInput({
     onChange(next);
   };
 
-  usePaste((text) => {
-    setBrowsing(null);
-    apply(insert(latest.current, text));
-  });
+  usePaste(
+    (text) => {
+      setBrowsing(null);
+      apply(insert(latest.current, text));
+    },
+    { isActive: active },
+  );
 
-  useInput((input, key) => {
-    if (key.ctrl && input === "c") return;
-    if (key.escape) return;
+  useInput(
+    (input, key) => {
+      if (key.ctrl && input === "c") return;
+      if (key.escape) return;
 
-    // Command menu takes the arrows, Tab and Enter
-    if (menu.length > 0) {
-      const choice = menu[selected] ?? menu[0]!;
+      // Command menu takes the arrows, Tab and Enter
+      if (menu.length > 0) {
+        const choice = menu[selected] ?? menu[0]!;
+        if (key.upArrow || key.downArrow) {
+          const step = key.upArrow ? -1 : 1;
+          onSelect((selected + step + menu.length) % menu.length);
+          return;
+        }
+        if (key.tab) {
+          apply(fromText(choice.name));
+          return;
+        }
+        if (key.return && !key.meta && !key.shift) {
+          setBrowsing(null);
+          onSubmit(choice.name);
+          return;
+        }
+      }
+
+      if (key.return) {
+        if (key.meta || key.shift) {
+          apply(insert(latest.current, "\n"));
+          return;
+        }
+        if (latest.current.value.slice(0, latest.current.cursor).endsWith("\\")) {
+          apply(insert(backspace(latest.current), "\n"));
+          return;
+        }
+        const text = latest.current.value.trim();
+        if (!text) return;
+        setBrowsing(null);
+        onSubmit(text);
+        return;
+      }
+
+      if (key.tab) return;
+
+      if ((key.upArrow || key.downArrow) && mask) return;
       if (key.upArrow || key.downArrow) {
-        const step = key.upArrow ? -1 : 1;
-        onSelect((selected + step + menu.length) % menu.length);
+        const direction = key.upArrow ? -1 : 1;
+        const moved = moveLine(latest.current, direction);
+        if (moved) {
+          apply(moved);
+          return;
+        }
+        if (history.length === 0) return;
+        const current = browsing.current;
+        const index = (current?.index ?? history.length) + direction;
+        if (index < 0) return;
+        if (index >= history.length) {
+          if (current) apply(current.saved);
+          setBrowsing(null);
+          return;
+        }
+        setBrowsing({ index, saved: current?.saved ?? latest.current });
+        apply(fromText(history[index]!));
         return;
       }
-      if (key.tab) {
-        apply(fromText(choice.name));
-        return;
-      }
-      if (key.return && !key.meta && !key.shift) {
+
+      if (key.backspace || key.delete) {
         setBrowsing(null);
-        onSubmit(choice.name);
+        apply(key.ctrl || key.meta ? deleteWordBack(latest.current) : backspace(latest.current));
         return;
       }
-    }
-
-    if (key.return) {
-      if (key.meta || key.shift) {
-        apply(insert(latest.current, "\n"));
-        return;
-      }
-      if (latest.current.value.slice(0, latest.current.cursor).endsWith("\\")) {
-        apply(insert(backspace(latest.current), "\n"));
-        return;
-      }
-      const text = latest.current.value.trim();
-      if (!text) return;
-      setBrowsing(null);
-      onSubmit(text);
-      return;
-    }
-
-    if (key.tab) return;
-
-    if (key.upArrow || key.downArrow) {
-      const direction = key.upArrow ? -1 : 1;
-      const moved = moveLine(latest.current, direction);
-      if (moved) {
-        apply(moved);
-        return;
-      }
-      if (history.length === 0) return;
-      const current = browsing.current;
-      const index = (current?.index ?? history.length) + direction;
-      if (index < 0) return;
-      if (index >= history.length) {
-        if (current) apply(current.saved);
+      if (key.leftArrow) return void apply(moveBy(latest.current, -1));
+      if (key.rightArrow) return void apply(moveBy(latest.current, 1));
+      if (key.home || (key.ctrl && input === "a")) return void apply(lineStart(latest.current));
+      if (key.end || (key.ctrl && input === "e")) return void apply(lineEnd(latest.current));
+      if (key.ctrl && (input === "u" || input === "w")) {
         setBrowsing(null);
-        return;
+        return void apply(input === "u" ? emptyDraft : deleteWordBack(latest.current));
       }
-      setBrowsing({ index, saved: current?.saved ?? latest.current });
-      apply(fromText(history[index]!));
-      return;
-    }
+      if (key.ctrl || key.meta || !input) return;
 
-    if (key.backspace || key.delete) {
       setBrowsing(null);
-      apply(key.ctrl || key.meta ? deleteWordBack(latest.current) : backspace(latest.current));
-      return;
-    }
-    if (key.leftArrow) return void apply(moveBy(latest.current, -1));
-    if (key.rightArrow) return void apply(moveBy(latest.current, 1));
-    if (key.home || (key.ctrl && input === "a")) return void apply(lineStart(latest.current));
-    if (key.end || (key.ctrl && input === "e")) return void apply(lineEnd(latest.current));
-    if (key.ctrl && (input === "u" || input === "w")) {
-      setBrowsing(null);
-      return void apply(input === "u" ? emptyDraft : deleteWordBack(latest.current));
-    }
-    if (key.ctrl || key.meta || !input) return;
+      apply(insert(latest.current, input));
+    },
+    { isActive: active },
+  );
 
-    setBrowsing(null);
-    apply(insert(latest.current, input));
-  });
-
-  const lines = draft.value ? renderLines(draft) : null;
+  const shown = mask ? { ...draft, value: "•".repeat(draft.value.length) } : draft;
+  const lines = draft.value ? renderLines(shown) : null;
 
   return (
     <Box borderStyle="round" borderColor={theme.accentDim} paddingX={1}>
