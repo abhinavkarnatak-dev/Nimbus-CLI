@@ -7,6 +7,7 @@ export interface HeaderInfo {
   model: string;
   shell: string;
   cwd: string;
+  route: string;
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -38,6 +39,7 @@ export function Header({ info }: { info: HeaderInfo }) {
       <Row label="cwd" value={shortenPath(info.cwd)} />
       <Row label="model" value={info.model} />
       <Row label="shell" value={info.shell} />
+      <Row label="via" value={info.route} />
     </Box>
   );
 }

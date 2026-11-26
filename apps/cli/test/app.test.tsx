@@ -30,7 +30,13 @@ describe("App", () => {
     const { lastFrame, frames, stdin, unmount } = render(
       <App
         createSession={createSession}
-        info={{ version: "0.0.0", model: "gpt-6-luna", shell: "bash", cwd }}
+        info={{
+          version: "0.0.0",
+          model: "gpt-6-luna",
+          shell: "bash",
+          cwd,
+          route: "direct to OpenAI",
+        }}
         onExit={() => {}}
       />,
     );
@@ -63,7 +69,13 @@ describe("App", () => {
     const { lastFrame, frames, stdin, unmount } = render(
       <App
         createSession={createSession}
-        info={{ version: "0.0.0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        info={{
+          version: "0.0.0",
+          model: "gpt-6-luna",
+          shell: "bash",
+          cwd: tmpdir(),
+          route: "direct to OpenAI",
+        }}
         onExit={() => {}}
       />,
     );

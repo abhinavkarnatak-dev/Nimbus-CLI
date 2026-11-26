@@ -16,6 +16,7 @@
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "model-check": "tsx --env-file=.env scripts/model-check.ts",
+    "dev:server": "tsx watch --env-file-if-exists=.env apps/server/src/index.ts",
     "nimbus": "pnpm --filter @nimbus/harness build && tsx --tsconfig apps/cli/tsconfig.json --env-file-if-exists=.env apps/cli/src/index.tsx"
   },
   "devDependencies": {
