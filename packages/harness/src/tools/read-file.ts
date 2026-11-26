@@ -70,7 +70,9 @@ Fails for binary files and for paths outside the working directory.`,
     const note = partial
       ? `\n\n(File has ${lines.length} lines. Showing ${start}-${end}. Use offset and limit to read more.)`
       : "";
-    const summary = partial ? `lines ${start}-${end} of ${lines.length}` : `${lines.length} lines`;
+    const summary = partial
+      ? `lines ${start}-${end} of ${lines.length}`
+      : `${lines.length} line${lines.length === 1 ? "" : "s"}`;
     return { output: body + note, summary };
   },
 });

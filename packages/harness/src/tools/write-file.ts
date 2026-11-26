@@ -10,6 +10,11 @@ const schema = z.strictObject({
   content: z.string(),
 });
 
+function linesLabel(text: string): string {
+  const count = lineCount(text);
+  return `${count} line${count === 1 ? "" : "s"}`;
+}
+
 function lineCount(text: string): number {
   if (text === "") return 0;
   return text.split(/\r?\n/).length - (/\r?\n$/.test(text) ? 1 : 0);
@@ -34,8 +39,8 @@ Prefer edit for small changes to existing files.
       await ctx.files.markCurrent(target.path);
       const change = describeChange(display, "", content);
       return {
-        output: `Created ${display} (${lineCount(content)} lines).`,
-        summary: `created, ${lineCount(content)} lines`,
+        output: `Created ${display} (${linesLabel(content)}).`,
+        summary: `created, ${linesLabel(content)}`,
         diff: change.diff,
       };
     }

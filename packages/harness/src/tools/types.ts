@@ -1,10 +1,14 @@
 import { z } from "zod";
 import type { FileTracker } from "./file-state.js";
+import type { ProcessManager } from "./processes.js";
+import type { ShellInfo } from "./shell.js";
 
 export interface ToolContext {
   cwd: string;
   signal: AbortSignal;
   files: FileTracker;
+  shell?: ShellInfo;
+  processes?: ProcessManager;
 }
 
 export interface ToolResult {
@@ -12,6 +16,7 @@ export interface ToolResult {
   isError?: boolean;
   summary?: string;
   diff?: string;
+  preview?: string;
 }
 
 export interface ToolSpec {

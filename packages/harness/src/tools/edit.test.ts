@@ -110,7 +110,7 @@ describe("edit", () => {
 describe("write_file", () => {
   it("creates new files and folders without a prior read", async () => {
     const result = await write("src/new/util.ts", "export const a = 1;\n");
-    expect(result.output).toBe("Created src/new/util.ts (1 lines).");
+    expect(result.output).toBe("Created src/new/util.ts (1 line).");
     expect(await contents("src/new/util.ts")).toBe("export const a = 1;\n");
   });
 

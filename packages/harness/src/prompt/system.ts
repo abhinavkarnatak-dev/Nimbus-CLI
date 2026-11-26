@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { detectShell, type ShellInfo } from "../tools/shell.js";
 
 export interface Environment {
   os: string;
@@ -9,11 +9,10 @@ export interface Environment {
 
 const OS_NAMES: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "Linux" };
 
-export function detectEnvironment(): Environment {
-  const shell = process.platform === "win32" ? "PowerShell" : basename(process.env.SHELL ?? "bash");
+export function detectEnvironment(shell: ShellInfo = detectShell()): Environment {
   return {
     os: OS_NAMES[process.platform] ?? process.platform,
-    shell,
+    shell: shell.name,
     cwd: process.cwd(),
     date: new Date().toLocaleDateString("en-CA"),
   };
@@ -57,6 +56,25 @@ Editing files:
 - After editing, tell the user briefly what you changed and where.`
     : "";
 
+  const commands = tools.has("bash")
+    ? `
+
+Running commands:
+- Use bash to run commands in the user's shell (named under Environment).
+  Write commands for that shell.
+- Each command starts in a new shell in the working directory. cd does not
+  carry over to the next command, so use "cd dir && command" when needed.
+- Commands cannot read input. Use non-interactive flags (for example --yes)
+  and avoid commands that open editors or pagers.
+- Prefer read_file, glob and grep over cat, find and grep commands.
+- After changing code, run the project's tests or build when they exist, and
+  fix what fails before saying you are done.
+- For servers and other long-running commands, set background to true, then
+  check them with bash_output and stop them with kill_process when finished.
+- Never run destructive commands (deleting many files, force pushes, hard
+  resets) unless the user clearly asked for exactly that.`
+    : "";
+
   return `
 
 Tools:
@@ -78,7 +96,7 @@ Working well:
 Answering:
 - Paths are relative to the working directory and use forward slashes.
 - When you mention code, include the path and line, like src/agent/session.ts:42.
-- Quote only the few lines that matter, not whole files.${editing}`;
+- Quote only the few lines that matter, not whole files.${editing}${commands}`;
 }
 
 export function buildSystemPrompt(env: Environment, toolNames: readonly string[] = []): string {

@@ -45,4 +45,12 @@ describe("system prompt", () => {
     expect(withEdit).toContain("You can read, search and edit files");
     expect(withEdit).toContain("Editing files:");
   });
+
+  it("adds command rules only when bash exists", () => {
+    const env = { os: "Linux", shell: "bash", cwd: "/app", date: "2026-11-26" };
+    expect(buildSystemPrompt(env, ["read_file"])).not.toContain("Running commands:");
+    const withBash = buildSystemPrompt(env, ["read_file", "bash"]);
+    expect(withBash).toContain("Running commands:");
+    expect(withBash).toContain("run the project's tests or build");
+  });
 });

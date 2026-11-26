@@ -9,6 +9,8 @@ import {
   type Usage,
 } from "../model/types.js";
 import { FileTracker } from "../tools/file-state.js";
+import { ProcessManager } from "../tools/processes.js";
+import type { ShellInfo } from "../tools/shell.js";
 import { truncateOutput } from "../tools/truncate.js";
 import type { Tool, ToolContext, ToolResult } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
@@ -21,6 +23,7 @@ export interface SessionOptions {
   instructions: string;
   cwd: string;
   tools?: Tool[];
+  shell?: ShellInfo;
   maxSteps?: number;
   id?: string;
 }
@@ -46,6 +49,8 @@ export class Session {
   readonly #history: HistoryItem[] = [];
   readonly #usage: Usage = emptyUsage();
   readonly #files = new FileTracker();
+  readonly #processes = new ProcessManager();
+  readonly #shell: ShellInfo | undefined;
   #cost = 0;
 
   constructor(options: SessionOptions) {
@@ -56,6 +61,7 @@ export class Session {
     this.#instructions = options.instructions;
     this.#tools = new Map((options.tools ?? []).map((tool) => [tool.name, tool]));
     this.#maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
+    this.#shell = options.shell;
   }
 
   get history(): readonly HistoryItem[] {
@@ -70,6 +76,11 @@ export class Session {
     return this.#cost;
   }
 
+  // Stop background processes we started
+  async dispose(): Promise<void> {
+    await this.#processes.killAll();
+  }
+
   // Run one user turn, looping over tools
   async *send(text: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
     const turnItems: HistoryItem[] = [{ role: "user", content: text }];
@@ -79,6 +90,8 @@ export class Session {
       cwd: this.cwd,
       signal: signal ?? new AbortController().signal,
       files: this.#files,
+      shell: this.#shell,
+      processes: this.#processes,
     };
     const toolSpecs = [...this.#tools.values()].map(({ name, description, parameters }) => ({
       name,
@@ -148,6 +161,7 @@ export class Session {
             isError: result.isError ?? false,
             durationMs: Date.now() - started,
             diff: result.diff,
+            preview: result.preview,
           };
         }
       }
