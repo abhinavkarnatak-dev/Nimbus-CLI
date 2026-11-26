@@ -2,7 +2,7 @@ import type { Session, Usage } from "@nimbus/harness";
 import type { AuthController } from "../auth/controller.js";
 import { Box, Static, useApp, useInput } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HELP_TEXT, matchCommands } from "./commands.js";
+import { HELP_TEXT, matchCommands, parseCommand } from "./commands.js";
 import { emptyDraft, fromText, type Draft } from "./editor.js";
 import { formatCost, formatTokens } from "./format.js";
 import { Header, type HeaderInfo } from "./Header.js";
@@ -22,6 +22,7 @@ interface Props {
   // Null in direct mode, where no login is needed
   auth: AuthController | null;
   loginOnStart?: boolean;
+  inviteCode?: string;
 }
 
 function usageReport(usage: Usage, cost: number): string {
@@ -33,7 +34,14 @@ function usageReport(usage: Usage, cost: number): string {
   ].join(" · ");
 }
 
-export function App({ createSession, info, onExit, auth, loginOnStart = false }: Props) {
+export function App({
+  createSession,
+  info,
+  onExit,
+  auth,
+  loginOnStart = false,
+  inviteCode,
+}: Props) {
   const { exit } = useApp();
   const session = useRef<Session>(null as unknown as Session);
   if (!session.current) session.current = createSession();
@@ -44,6 +52,7 @@ export function App({ createSession, info, onExit, auth, loginOnStart = false }:
   const [staticKey, setStaticKey] = useState(0);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [menuIndex, setMenuIndex] = useState(0);
+  const [browsingHistory, setBrowsingHistory] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [runningSince, setRunningSince] = useState<number | null>(null);
   const [queued, setQueued] = useState<string | null>(null);
@@ -123,7 +132,7 @@ export function App({ createSession, info, onExit, auth, loginOnStart = false }:
 
   // Browser login, then send the message that was waiting for it
   const beginLogin = useCallback(
-    async (pending: string | null) => {
+    async (pending: string | null, code?: string) => {
       if (!auth || loginAbort.current) return;
       const abort = new AbortController();
       loginAbort.current = abort;
@@ -131,6 +140,7 @@ export function App({ createSession, info, onExit, auth, loginOnStart = false }:
       try {
         const email = await auth.login({
           signal: abort.signal,
+          inviteCode: code,
           onUrl: (url) => setLogin((prev) => (prev.phase === "waiting" ? { ...prev, url } : prev)),
         });
         setAccount(email);
@@ -150,19 +160,28 @@ export function App({ createSession, info, onExit, auth, loginOnStart = false }:
   );
 
   const runCommand = useCallback(
-    (name: string) => {
+    (name: string, arg = "") => {
       switch (name) {
         case "/help":
           append({ kind: "assistant", id: newId(), text: HELP_TEXT });
           return;
-        case "/usage":
-          append({
-            kind: "notice",
-            id: newId(),
-            text: usageReport(session.current.usage, session.current.cost),
-            tone: "info",
-          });
+        case "/usage": {
+          const report = usageReport(session.current.usage, session.current.cost);
+          if (!auth?.state.loggedIn) {
+            notice(report);
+            return;
+          }
+          void auth
+            .account()
+            .then((account) =>
+              notice(
+                account
+                  ? `${report}\nTrial credit: ${formatCost(account.spentMicroUsd / 1e6)} of ${formatCost(account.quotaMicroUsd / 1e6)} used`
+                  : report,
+              ),
+            );
           return;
+        }
         case "/clear": {
           const old = session.current;
           spentBefore.current += old.cost;
@@ -177,7 +196,7 @@ export function App({ createSession, info, onExit, auth, loginOnStart = false }:
         }
         case "/login":
           if (!auth) notice("No login needed: Nimbus is using your own OpenAI key.");
-          else void beginLogin(null);
+          else void beginLogin(null, arg || undefined);
           return;
         case "/logout":
           if (!auth) {
@@ -209,8 +228,9 @@ export function App({ createSession, info, onExit, auth, loginOnStart = false }:
     (text: string) => {
       setDraft(emptyDraft);
       setHistory((prev) => (prev.at(-1) === text ? prev : [...prev, text]));
-      if (text.startsWith("/") && !text.includes(" ")) {
-        runCommand(text.toLowerCase());
+      const command = parseCommand(text);
+      if (command) {
+        runCommand(command.name, command.arg);
         return;
       }
       if (login.phase === "waiting") {
@@ -241,8 +261,8 @@ export function App({ createSession, info, onExit, auth, loginOnStart = false }:
   useEffect(() => {
     if (!loginOnStart || loginStarted.current) return;
     loginStarted.current = true;
-    void beginLogin(null);
-  }, [loginOnStart, beginLogin]);
+    void beginLogin(null, inviteCode);
+  }, [loginOnStart, beginLogin, inviteCode]);
 
   // A token from NIMBUS_TOKEN has no saved email yet
   useEffect(() => {
@@ -303,7 +323,8 @@ export function App({ createSession, info, onExit, auth, loginOnStart = false }:
     }
   });
 
-  const menu = matchCommands(draft.value);
+  // A recalled "/login" should not open the menu and take over the arrows
+  const menu = browsingHistory ? [] : matchCommands(draft.value);
   const selected = Math.min(menuIndex, Math.max(menu.length - 1, 0));
 
   const hint = exitArmed
@@ -324,7 +345,7 @@ export function App({ createSession, info, onExit, auth, loginOnStart = false }:
             <Header
               key={item.id}
               info={info}
-              account={auth ? (account ?? (loggedIn ? "logged in" : "not logged in")) : undefined}
+              account={auth ? (account ?? (loggedIn ? undefined : "not logged in")) : undefined}
             />
           ) : (
             <ItemView key={item.id} item={item} />
@@ -344,6 +365,7 @@ export function App({ createSession, info, onExit, auth, loginOnStart = false }:
           menu={menu}
           selected={selected}
           onSelect={setMenuIndex}
+          onBrowsingChange={setBrowsingHistory}
         />
         {menu.length > 0 ? (
           <CommandMenu commands={menu} selected={selected} />

@@ -11,6 +11,7 @@ describe("resolveSetup", () => {
     expect(setup).toEqual({
       mode: "server",
       serverUrl: "http://localhost:8787",
+      customServer: true,
       envToken: "nmb_x",
     });
     expect(routeLabel(setup)).toBe("server localhost:8787");
@@ -19,14 +20,17 @@ describe("resolveSetup", () => {
   it("goes direct when only an OpenAI key is set", () => {
     const setup = resolveSetup({ OPENAI_API_KEY: "sk" });
     expect(setup).toEqual({ mode: "direct", apiKey: "sk" });
-    expect(routeLabel(setup)).toBe("direct to OpenAI");
+    expect(routeLabel(setup)).toBe("your OpenAI key");
   });
 
-  it("falls back to the default server when nothing is set", () => {
-    expect(resolveSetup({})).toEqual({
+  it("falls back to the default server and hides the route from users", () => {
+    const setup = resolveSetup({});
+    expect(setup).toEqual({
       mode: "server",
       serverUrl: DEFAULT_SERVER_URL,
+      customServer: false,
       envToken: undefined,
     });
+    expect(routeLabel(setup)).toBeUndefined();
   });
 });

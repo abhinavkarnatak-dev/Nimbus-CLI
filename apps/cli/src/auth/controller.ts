@@ -4,11 +4,20 @@ import type { CredentialStore, Credentials } from "./credentials.js";
 export interface AuthState {
   loggedIn: boolean;
   email: string | null;
+  // Where the token came from
+  source: "env" | "saved" | null;
 }
 
 export interface LoginRequest {
   onUrl: (url: string) => void;
   signal: AbortSignal;
+  inviteCode?: string;
+}
+
+export interface Account {
+  email: string;
+  spentMicroUsd: number;
+  quotaMicroUsd: number;
 }
 
 export interface AuthControllerOptions {
@@ -25,20 +34,23 @@ export class AuthController {
   readonly #options: AuthControllerOptions;
   #token: string | null = null;
   #email: string | null = null;
+  #source: AuthState["source"] = null;
 
   constructor(options: AuthControllerOptions) {
     this.#options = options;
     const saved = options.envToken ? null : options.store.load();
-    this.#use(options.envToken ?? saved?.token ?? null, saved?.email ?? null);
+    if (options.envToken) this.#use(options.envToken, null, "env");
+    else if (saved) this.#use(saved.token, saved.email, "saved");
   }
 
   get state(): AuthState {
-    return { loggedIn: this.#token !== null, email: this.#email };
+    return { loggedIn: this.#token !== null, email: this.#email, source: this.#source };
   }
 
-  #use(token: string | null, email: string | null): void {
+  #use(token: string | null, email: string | null, source: AuthState["source"]): void {
     this.#token = token;
     this.#email = token ? email : null;
+    this.#source = token ? source : null;
     this.#options.client.setToken(token);
   }
 
@@ -52,10 +64,19 @@ export class AuthController {
     return this.#email;
   }
 
+  // Trial credit as the server sees it
+  async account(): Promise<Account | null> {
+    if (!this.#token) return null;
+    const res = await (this.#options.fetchFn ?? fetch)(`${this.#options.serverUrl}/v1/me`, {
+      headers: { authorization: `Bearer ${this.#token}` },
+    }).catch(() => null);
+    return res?.ok ? ((await res.json()) as Account) : null;
+  }
+
   async login(request: LoginRequest): Promise<string> {
     const credentials = await this.#options.login(request);
     this.#options.store.save(credentials);
-    this.#use(credentials.token, credentials.email);
+    this.#use(credentials.token, credentials.email, "saved");
     return credentials.email;
   }
 
@@ -73,6 +94,6 @@ export class AuthController {
   // Token was refused by the server
   forget(): void {
     this.#options.store.clear();
-    this.#use(null, null);
+    this.#use(null, null, null);
   }
 }

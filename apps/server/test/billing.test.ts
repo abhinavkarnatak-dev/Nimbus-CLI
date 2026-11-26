@@ -4,7 +4,14 @@ import { sslFor } from "../src/db/client.js";
 import { costMicroUsd, estimateCounts } from "../src/db/ledger.js";
 import type { CallReport } from "../src/proxy/route.js";
 
-const auth = { tokenId: "t1", userId: "u1", email: "a@test.dev", lastUsedAt: null };
+const auth = {
+  tokenId: "t1",
+  userId: "u1",
+  email: "a@test.dev",
+  lastUsedAt: null,
+  spentMicroUsd: 0,
+  quotaMicroUsd: null,
+};
 const report = (end: CallReport["end"]): CallReport => ({
   auth,
   model: "gpt-6-luna",

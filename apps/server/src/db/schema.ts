@@ -23,6 +23,28 @@ export const users = nimbus.table("users", {
   status: text("status", { enum: ["active", "blocked"] })
     .notNull()
     .default("active"),
+  // Null means the default trial quota from the server config
+  quotaMicroUsd: bigint("quota_micro_usd", { mode: "number" }),
+  // Running total of the ledger, kept in the same transaction
+  spentMicroUsd: bigint("spent_micro_usd", { mode: "number" }).notNull().default(0),
+  createdAt: createdAt(),
+});
+
+// Emails allowed to create an account
+export const invites = nimbus.table("invites", {
+  email: text("email").primaryKey(),
+  source: text("source", { enum: ["admin", "code"] }).notNull(),
+  code: text("code"),
+  quotaMicroUsd: bigint("quota_micro_usd", { mode: "number" }),
+  createdAt: createdAt(),
+});
+
+// Shareable codes with a limited number of uses
+export const inviteCodes = nimbus.table("invite_codes", {
+  code: text("code").primaryKey(),
+  maxUses: integer("max_uses").notNull(),
+  usedCount: integer("used_count").notNull().default(0),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
 
@@ -61,6 +83,7 @@ export const usageEvents = nimbus.table(
       .references(() => users.id, { onDelete: "cascade" }),
     tokenId: uuid("token_id").references(() => apiTokens.id, { onDelete: "set null" }),
     model: text("model").notNull(),
+    promptCacheKey: text("prompt_cache_key"),
     outcome: text("outcome", { enum: USAGE_OUTCOMES }).notNull(),
     responseStatus: text("response_status"),
     inputTokens: integer("input_tokens").notNull(),
@@ -71,7 +94,10 @@ export const usageEvents = nimbus.table(
     durationMs: integer("duration_ms").notNull(),
     createdAt: createdAt(),
   },
-  (table) => [index("usage_events_user_time_idx").on(table.userId, table.createdAt)],
+  (table) => [
+    index("usage_events_user_time_idx").on(table.userId, table.createdAt),
+    index("usage_events_cache_key_idx").on(table.userId, table.promptCacheKey),
+  ],
 );
 
 // One browser login started by the CLI, valid for a few minutes
@@ -84,6 +110,7 @@ export const loginAttempts = nimbus.table(
     cliPort: integer("cli_port").notNull(),
     googleState: text("google_state").notNull().unique(),
     googleVerifier: text("google_verifier").notNull(),
+    inviteCode: text("invite_code"),
     codeHash: text("code_hash").unique(),
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     createdAt: createdAt(),
@@ -94,4 +121,4 @@ export const loginAttempts = nimbus.table(
   (table) => [index("login_attempts_expires_idx").on(table.expiresAt)],
 );
 
-export const schema = { users, apiTokens, usageEvents, loginAttempts };
+export const schema = { users, invites, inviteCodes, apiTokens, usageEvents, loginAttempts };

@@ -26,6 +26,8 @@ interface Props {
   menu: SlashCommand[];
   selected: number;
   onSelect: (index: number) => void;
+  // True while Up/Down is walking through history
+  onBrowsingChange: (browsing: boolean) => void;
 }
 
 // Draw the text with an inverse cursor
@@ -47,9 +49,14 @@ export function PromptInput({
   menu,
   selected,
   onSelect,
+  onBrowsingChange,
 }: Props) {
   // Index into history while browsing, saved draft to restore
   const browsing = useRef<{ index: number; saved: Draft } | null>(null);
+  const setBrowsing = (value: { index: number; saved: Draft } | null) => {
+    if ((browsing.current === null) !== (value === null)) onBrowsingChange(value !== null);
+    browsing.current = value;
+  };
 
   // Latest draft, so fast keys never use a stale value
   const latest = useRef(draft);
@@ -60,7 +67,7 @@ export function PromptInput({
   };
 
   usePaste((text) => {
-    browsing.current = null;
+    setBrowsing(null);
     apply(insert(latest.current, text));
   });
 
@@ -81,7 +88,7 @@ export function PromptInput({
         return;
       }
       if (key.return && !key.meta && !key.shift) {
-        browsing.current = null;
+        setBrowsing(null);
         onSubmit(choice.name);
         return;
       }
@@ -98,7 +105,7 @@ export function PromptInput({
       }
       const text = latest.current.value.trim();
       if (!text) return;
-      browsing.current = null;
+      setBrowsing(null);
       onSubmit(text);
       return;
     }
@@ -118,15 +125,16 @@ export function PromptInput({
       if (index < 0) return;
       if (index >= history.length) {
         if (current) apply(current.saved);
-        browsing.current = null;
+        setBrowsing(null);
         return;
       }
-      browsing.current = { index, saved: current?.saved ?? latest.current };
+      setBrowsing({ index, saved: current?.saved ?? latest.current });
       apply(fromText(history[index]!));
       return;
     }
 
     if (key.backspace || key.delete) {
+      setBrowsing(null);
       apply(key.ctrl || key.meta ? deleteWordBack(latest.current) : backspace(latest.current));
       return;
     }
@@ -134,11 +142,13 @@ export function PromptInput({
     if (key.rightArrow) return void apply(moveBy(latest.current, 1));
     if (key.home || (key.ctrl && input === "a")) return void apply(lineStart(latest.current));
     if (key.end || (key.ctrl && input === "e")) return void apply(lineEnd(latest.current));
-    if (key.ctrl && input === "u") return void apply(emptyDraft);
-    if (key.ctrl && input === "w") return void apply(deleteWordBack(latest.current));
+    if (key.ctrl && (input === "u" || input === "w")) {
+      setBrowsing(null);
+      return void apply(input === "u" ? emptyDraft : deleteWordBack(latest.current));
+    }
     if (key.ctrl || key.meta || !input) return;
 
-    browsing.current = null;
+    setBrowsing(null);
     apply(insert(latest.current, input));
   });
 

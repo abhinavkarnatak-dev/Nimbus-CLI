@@ -5,7 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { s256 } from "../src/auth/pkce.js";
 import type { Db } from "../src/db/client.js";
-import { loginAttempts, users } from "../src/db/schema.js";
+import { addInvite, createInviteCode } from "../src/db/invites.js";
+import { inviteCodes, loginAttempts, users } from "../src/db/schema.js";
 import { issueToken } from "../src/db/tokens.js";
 import { silentLogger } from "../src/log.js";
 import { testDb } from "./db.js";
@@ -29,9 +30,18 @@ afterAll(async () => {
   await client.close();
 });
 
-function setup(profile?: Parameters<typeof fakeGoogle>[0]) {
+interface SetupOptions {
+  invited?: boolean;
+  code?: string;
+}
+
+async function setup(
+  profile?: Parameters<typeof fakeGoogle>[0],
+  { invited = true, code }: SetupOptions = {},
+) {
   const n = ++count;
   const fake = fakeGoogle({ sub: `sub-${n}`, email: `person${n}@gmail.com`, ...profile });
+  if (invited) await addInvite(db, fake.state.profile.email);
   const app = createApp({
     config,
     db,
@@ -42,9 +52,10 @@ function setup(profile?: Parameters<typeof fakeGoogle>[0]) {
   const verifier = randomBytes(32).toString("base64url");
   const cliState = randomBytes(16).toString("base64url");
 
+  const codePart = code ? `&invite=${code}` : "";
   const start = (query?: string) =>
     app.request(
-      `/auth/cli/start?${query ?? `port=50123&state=${cliState}&challenge=${s256(verifier)}`}`,
+      `/auth/cli/start?${query ?? `port=50123&state=${cliState}&challenge=${s256(verifier)}${codePart}`}`,
     );
 
   // Run start and the Google callback, return where the browser lands
@@ -75,7 +86,7 @@ function setup(profile?: Parameters<typeof fakeGoogle>[0]) {
 
 describe("cli login", () => {
   it("logs in end to end without the token ever being in a URL", async () => {
-    const { loginInBrowser, exchange, me, cliState } = setup();
+    const { loginInBrowser, exchange, me, cliState } = await setup();
     const { landing } = await loginInBrowser();
     expect(landing.origin).toBe("http://127.0.0.1:50123");
     expect(landing.pathname).toBe("/callback");
@@ -89,18 +100,18 @@ describe("cli login", () => {
     expect(email).toMatch(/^person\d+@gmail\.com$/);
 
     const whoami = await me(token);
-    expect(await whoami.json()).toEqual({ email });
+    expect(await whoami.json()).toEqual({ email, spentMicroUsd: 0, quotaMicroUsd: 500_000 });
   });
 
   it("uses each one-time code only once", async () => {
-    const { loginInBrowser, exchange } = setup();
+    const { loginInBrowser, exchange } = await setup();
     const code = (await loginInBrowser()).landing.searchParams.get("code")!;
     expect((await exchange(code)).status).toBe(200);
     expect((await exchange(code)).status).toBe(400);
   });
 
   it("refuses a code without the matching verifier and burns it", async () => {
-    const { loginInBrowser, exchange } = setup();
+    const { loginInBrowser, exchange } = await setup();
     const code = (await loginInBrowser()).landing.searchParams.get("code")!;
     const wrong = randomBytes(32).toString("base64url");
     expect((await exchange(code, wrong)).status).toBe(400);
@@ -108,18 +119,18 @@ describe("cli login", () => {
   });
 
   it("sends errors back to the CLI instead of logging in", async () => {
-    const unverified = setup({ emailVerified: false });
+    const unverified = await setup({ emailVerified: false });
     expect((await unverified.loginInBrowser()).landing.searchParams.get("error")).toBe(
       "email_not_verified",
     );
 
-    const failing = setup();
+    const failing = await setup();
     failing.fake.state.fail = true;
     expect((await failing.loginInBrowser()).landing.searchParams.get("error")).toBe(
       "google_failed",
     );
 
-    const denied = setup();
+    const denied = await setup();
     const started = await denied.start();
     const googleState = new URL(started.headers.get("location")!).searchParams.get("state")!;
     const res = await denied.app.request(
@@ -129,7 +140,7 @@ describe("cli login", () => {
   });
 
   it("refuses blocked users", async () => {
-    const blocked = setup({ email: "blocked@gmail.com" });
+    const blocked = await setup({ email: "blocked@gmail.com" }, { invited: false });
     const { userId } = await issueToken(db, "blocked@gmail.com", "admin");
     await db.update(users).set({ status: "blocked" }).where(eq(users.id, userId));
     expect((await blocked.loginInBrowser()).landing.searchParams.get("error")).toBe(
@@ -139,14 +150,17 @@ describe("cli login", () => {
 
   it("links a Google login to an existing user with the same email", async () => {
     const { userId } = await issueToken(db, "Existing@Gmail.com", "admin");
-    const { loginInBrowser } = setup({ email: "existing@gmail.com", sub: "sub-existing" });
+    const { loginInBrowser } = await setup(
+      { email: "existing@gmail.com", sub: "sub-existing" },
+      { invited: false },
+    );
     await loginInBrowser();
     const [row] = await db.select().from(users).where(eq(users.id, userId));
     expect(row!.googleSub).toBe("sub-existing");
   });
 
   it("rejects bad start links, unknown states and expired attempts", async () => {
-    const { start, app } = setup();
+    const { start, app } = await setup();
     expect((await start("port=80&state=abc&challenge=x")).status).toBe(400);
     expect((await app.request("/auth/google/callback?state=nope&code=x")).status).toBe(400);
 
@@ -162,7 +176,7 @@ describe("cli login", () => {
   });
 
   it("logs out by revoking the token", async () => {
-    const { loginInBrowser, exchange, me, app } = setup();
+    const { loginInBrowser, exchange, me, app } = await setup();
     const code = (await loginInBrowser()).landing.searchParams.get("code")!;
     const { token } = (await (await exchange(code)).json()) as { token: string };
     const out = await app.request("/v1/auth/logout", {
@@ -171,5 +185,38 @@ describe("cli login", () => {
     });
     expect(out.status).toBe(204);
     expect((await me(token)).status).toBe(401);
+  });
+});
+
+describe("invites", () => {
+  it("refuses new people without an invite", async () => {
+    const { loginInBrowser } = await setup(undefined, { invited: false });
+    expect((await loginInBrowser()).landing.searchParams.get("error")).toBe("not_invited");
+  });
+
+  it("lets people in with an invite code until its uses run out", async () => {
+    await createInviteCode(db, "launch2", 1);
+    const first = await setup(undefined, { invited: false, code: "launch2" });
+    const code = (await first.loginInBrowser()).landing.searchParams.get("code")!;
+    expect((await first.exchange(code)).status).toBe(200);
+
+    const second = await setup(undefined, { invited: false, code: "LAUNCH2" });
+    expect((await second.loginInBrowser()).landing.searchParams.get("error")).toBe("invalid_code");
+    const [row] = await db.select().from(inviteCodes).where(eq(inviteCodes.code, "LAUNCH2"));
+    expect(row!.usedCount).toBe(1);
+  });
+
+  it("refuses expired codes", async () => {
+    await createInviteCode(db, "OLD", 5, new Date(Date.now() - 1000));
+    const { loginInBrowser } = await setup(undefined, { invited: false, code: "OLD" });
+    expect((await loginInBrowser()).landing.searchParams.get("error")).toBe("invalid_code");
+  });
+
+  it("does not spend a code on someone who is already invited", async () => {
+    await createInviteCode(db, "SPARE", 1);
+    const { loginInBrowser } = await setup(undefined, { code: "SPARE" });
+    await loginInBrowser();
+    const [row] = await db.select().from(inviteCodes).where(eq(inviteCodes.code, "SPARE"));
+    expect(row!.usedCount).toBe(0);
   });
 });

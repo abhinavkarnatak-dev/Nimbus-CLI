@@ -11,6 +11,7 @@ export interface NewAttempt {
   cliPort: number;
   googleState: string;
   googleVerifier: string;
+  inviteCode: string | null;
 }
 
 export async function createAttempt(db: Db, attempt: NewAttempt): Promise<void> {

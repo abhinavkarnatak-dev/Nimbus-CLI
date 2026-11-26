@@ -7,7 +7,7 @@ import type { Db } from "../db/client.js";
 import { authorizeAttempt, createAttempt, findPendingAttempt, redeemCode } from "../db/logins.js";
 import { users } from "../db/schema.js";
 import { createToken } from "../db/tokens.js";
-import { upsertGoogleUser } from "../db/users.js";
+import { resolveGoogleUser } from "../db/users.js";
 import type { AppEnv } from "../env.js";
 import { apiError } from "../errors.js";
 import type { Logger } from "../log.js";
@@ -41,12 +41,14 @@ export function authRoutes(deps: AuthDeps) {
     const port = Number(c.req.query("port"));
     const state = c.req.query("state") ?? "";
     const challenge = c.req.query("challenge") ?? "";
+    const invite = c.req.query("invite")?.trim() || null;
     const valid =
       Number.isInteger(port) &&
       port >= 1024 &&
       port <= 65535 &&
       isBase64Url(state, 16, 128) &&
-      isBase64Url(challenge, 43, 43);
+      isBase64Url(challenge, 43, 43) &&
+      (invite === null || /^[A-Za-z0-9_-]{3,64}$/.test(invite));
     if (!valid) return c.html(invalidLink, 400);
 
     const googleState = generateState();
@@ -57,6 +59,7 @@ export function authRoutes(deps: AuthDeps) {
       cliPort: port,
       googleState,
       googleVerifier,
+      inviteCode: invite,
     });
     return c.redirect(google.authorizationUrl(googleState, googleVerifier).toString(), 302);
   });
@@ -85,7 +88,12 @@ export function authRoutes(deps: AuthDeps) {
     }
     if (!profile.emailVerified) return backToCli({ error: "email_not_verified" });
 
-    const user = await upsertGoogleUser(db, profile);
+    const resolved = await resolveGoogleUser(db, profile, attempt.inviteCode);
+    if (!resolved.ok) {
+      log("info", "login refused", { reason: resolved.reason });
+      return backToCli({ error: resolved.reason });
+    }
+    const { user } = resolved;
     if (user.status !== "active") return backToCli({ error: "account_blocked" });
 
     const oneTimeCode = randomBytes(32).toString("base64url");

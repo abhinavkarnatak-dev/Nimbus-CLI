@@ -9,6 +9,7 @@ export const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 export interface LoginOptions {
   serverUrl: string;
   label: string;
+  inviteCode?: string;
   openBrowser: (url: string) => Promise<unknown>;
   onUrl?: (url: string) => void;
   signal?: AbortSignal;
@@ -21,6 +22,8 @@ const ERROR_TEXT: Record<string, string> = {
   email_not_verified: "Your Google email is not verified.",
   account_blocked: "This account is blocked.",
   google_failed: "Google login failed. Try again.",
+  not_invited: "Nimbus is invite only for now. Got an invite code? Run /login <code>.",
+  invalid_code: "That invite code is not valid, used up or expired.",
 };
 
 export class LoginError extends Error {}
@@ -90,11 +93,9 @@ export async function browserLogin(options: LoginOptions): Promise<Credentials> 
     server.listen(0, "127.0.0.1", resolve);
   });
   const { port } = server.address() as AddressInfo;
-  const startUrl = `${options.serverUrl}/auth/cli/start?${new URLSearchParams({
-    port: String(port),
-    state,
-    challenge: s256(verifier),
-  })}`;
+  const params = new URLSearchParams({ port: String(port), state, challenge: s256(verifier) });
+  if (options.inviteCode) params.set("invite", options.inviteCode);
+  const startUrl = `${options.serverUrl}/auth/cli/start?${params}`;
 
   const timer = setTimeout(
     () => settle.reject(new LoginError("Login timed out. Try again.")),

@@ -4,7 +4,7 @@ import type { TokenOwner } from "../db/tokens.js";
 import type { AppEnv } from "../env.js";
 import { apiError } from "../errors.js";
 import type { Logger } from "../log.js";
-import { responsesRequestSchema, upstreamBody } from "./request.js";
+import { responsesRequestSchema, upstreamBody, type ResponsesRequest } from "./request.js";
 import { relay, type StreamEnd } from "./usage.js";
 
 export type CallEnd = StreamEnd | { kind: "client_left" };
@@ -12,6 +12,7 @@ export type CallEnd = StreamEnd | { kind: "client_left" };
 export interface CallReport {
   auth: TokenOwner;
   model: string;
+  promptCacheKey?: string;
   end: CallEnd;
   durationMs: number;
   requestChars: number;
@@ -25,6 +26,17 @@ export interface ProxyDeps {
   fetchUpstream: typeof fetch;
   log: Logger;
   onCallEnd: (report: CallReport) => void;
+}
+
+// Characters that are billed as text: encrypted reasoning is left out
+export function billableChars(request: ResponsesRequest): number {
+  const skipEncrypted = (key: string, value: unknown) =>
+    key === "encrypted_content" ? undefined : value;
+  return (
+    (request.instructions?.length ?? 0) +
+    JSON.stringify(request.input, skipEncrypted).length +
+    JSON.stringify(request.tools ?? []).length
+  );
 }
 
 // Upstream errors that are about the request itself
@@ -50,13 +62,15 @@ export function responsesHandler(deps: ProxyDeps) {
     const signal = c.req.raw.signal;
     const started = Date.now();
     const body = JSON.stringify(upstreamBody(parsed.data, deps.maxOutputTokens));
+    const requestChars = billableChars(parsed.data);
     const report = (end: CallEnd, streamedChars: number) =>
       deps.onCallEnd({
         auth,
         model,
+        promptCacheKey: parsed.data.prompt_cache_key,
         end,
         durationMs: Date.now() - started,
-        requestChars: body.length,
+        requestChars,
         streamedChars,
       });
 

@@ -10,7 +10,14 @@ export interface ServerConfig {
   publicUrl: string;
   googleClientId: string;
   googleClientSecret: string;
+  trialQuotaMicroUsd: number;
+  globalBudgetMicroUsd: number;
+  paused: boolean;
+  maxConcurrent: number;
+  ratePerMinute: number;
 }
+
+export const usdToMicro = (usd: number) => Math.round(usd * 1_000_000);
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name]?.trim();
@@ -42,5 +49,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     publicUrl: (env.NIMBUS_PUBLIC_URL ?? `http://localhost:${port}`).replace(/\/+$/, ""),
     googleClientId: required(env, "GOOGLE_CLIENT_ID"),
     googleClientSecret: required(env, "GOOGLE_CLIENT_SECRET"),
+    trialQuotaMicroUsd: usdToMicro(Number(env.NIMBUS_TRIAL_QUOTA_USD ?? 0.5)),
+    globalBudgetMicroUsd: usdToMicro(Number(env.NIMBUS_GLOBAL_BUDGET_USD ?? 8)),
+    paused: env.NIMBUS_PAUSED === "true",
+    maxConcurrent: Number(env.NIMBUS_MAX_CONCURRENT ?? 3),
+    ratePerMinute: Number(env.NIMBUS_RATE_PER_MINUTE ?? 60),
   };
 }

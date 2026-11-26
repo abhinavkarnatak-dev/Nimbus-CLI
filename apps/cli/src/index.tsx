@@ -16,15 +16,14 @@ import { SwitchableModelClient } from "./auth/client.js";
 import { AuthController } from "./auth/controller.js";
 import { defaultStore } from "./auth/credentials.js";
 import { browserLogin } from "./auth/login.js";
+import { parseArgs } from "./args.js";
 import { resolveSetup, routeLabel } from "./connection.js";
 import { App } from "./ui/App.js";
 import { formatCost } from "./ui/format.js";
 
 const MODEL = "gpt-6-luna";
 
-const args = process.argv.slice(2);
-const command = args[0] === "login" || args[0] === "logout" ? args[0] : null;
-const folder = command ? args[1] : args[0];
+const { command, inviteCode, folder } = parseArgs(process.argv.slice(2));
 if (folder) process.chdir(resolve(folder));
 
 const setup = resolveSetup();
@@ -41,10 +40,11 @@ if (setup.mode === "server") {
     store: defaultStore(serverUrl),
     client: switchable,
     envToken: setup.envToken,
-    login: ({ onUrl, signal }) =>
+    login: ({ onUrl, signal, inviteCode: code }) =>
       browserLogin({
         serverUrl,
         label: `cli ${hostname()}`,
+        inviteCode: code,
         openBrowser: (url) => open(url),
         onUrl,
         signal,
@@ -67,6 +67,11 @@ if (command === "logout") {
     console.log("Not logged in.");
   }
   process.exit(0);
+}
+
+// A NIMBUS_TOKEN has no saved email, ask the server once before drawing the header
+if (auth?.state.loggedIn && !auth.state.email) {
+  await Promise.race([auth.refreshEmail(), new Promise((done) => setTimeout(done, 4000))]);
 }
 
 const shell = detectShell();
@@ -92,6 +97,7 @@ const app = render(
     }}
     auth={auth}
     loginOnStart={command === "login"}
+    inviteCode={inviteCode}
     onExit={(cost) => {
       totalCost = cost;
     }}

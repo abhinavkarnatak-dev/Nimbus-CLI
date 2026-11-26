@@ -12,6 +12,9 @@ export interface TokenOwner {
   userId: string;
   email: string;
   lastUsedAt: Date | null;
+  spentMicroUsd: number;
+  // Null means the server's default trial quota
+  quotaMicroUsd: number | null;
 }
 
 // New token for a user, only the hash is stored
@@ -45,6 +48,8 @@ export async function findTokenOwner(db: Db, token: string): Promise<TokenOwner 
       userId: users.id,
       email: users.email,
       lastUsedAt: apiTokens.lastUsedAt,
+      spentMicroUsd: users.spentMicroUsd,
+      quotaMicroUsd: users.quotaMicroUsd,
     })
     .from(apiTokens)
     .innerJoin(users, eq(apiTokens.userId, users.id))

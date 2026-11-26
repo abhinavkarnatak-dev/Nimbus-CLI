@@ -107,6 +107,45 @@ describe("App", () => {
     unmount();
   });
 
+  it("walks history with the arrows, even past a command", async () => {
+    const createSession = () =>
+      new Session({
+        client: new FakeModelClient([{ text: "one" }]),
+        model: "gpt-6-luna",
+        instructions: "test",
+        cwd: tmpdir(),
+      });
+    const { lastFrame, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir(), route: "direct" }}
+        onExit={() => {}}
+        auth={null}
+      />,
+    );
+    const input = () => (lastFrame() ?? "").split("\n").find((line) => line.includes("> ")) ?? "";
+    await tick();
+    stdin.write("first message");
+    await tick();
+    stdin.write("\r");
+    await tick(300);
+    stdin.write("/usage");
+    await tick();
+    stdin.write("\r");
+    await tick();
+    stdin.write("\u001B[A");
+    await tick();
+    expect(input()).toContain("/usage");
+    expect(lastFrame()).not.toContain("Show tokens and cost");
+    stdin.write("\u001B[A");
+    await tick();
+    expect(input()).toContain("first message");
+    stdin.write("\u001B[B");
+    await tick();
+    expect(input()).toContain("/usage");
+    unmount();
+  });
+
   function loginSetup(turns: ConstructorParameters<typeof FakeModelClient>[0], saved = false) {
     const fake = new FakeModelClient(turns);
     const client = new SwitchableModelClient(() => fake);

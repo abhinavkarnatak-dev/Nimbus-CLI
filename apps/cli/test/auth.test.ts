@@ -61,6 +61,32 @@ describe("browserLogin", () => {
     expect(exchange.seen[0]).toMatchObject({ code: "one-time", label: "cli test" });
   });
 
+  it("sends the invite code to the server", async () => {
+    const exchange = fakeExchange();
+    let shownUrl = "";
+    await browserLogin({
+      serverUrl: "http://server.test",
+      label: "x",
+      inviteCode: "LAUNCH20",
+      fetchFn: exchange.fetchFn,
+      openBrowser: fakeBrowser(exchange, { code: "one-time" }),
+      onUrl: (url) => (shownUrl = url),
+    });
+    expect(new URL(shownUrl).searchParams.get("invite")).toBe("LAUNCH20");
+  });
+
+  it("explains invite errors", async () => {
+    const exchange = fakeExchange();
+    await expect(
+      browserLogin({
+        serverUrl: "http://server.test",
+        label: "x",
+        fetchFn: exchange.fetchFn,
+        openBrowser: fakeBrowser(exchange, { error: "not_invited" }),
+      }),
+    ).rejects.toThrow("invite only");
+  });
+
   it("explains errors sent back by the server", async () => {
     const exchange = fakeExchange();
     await expect(
@@ -131,11 +157,11 @@ describe("AuthController", () => {
       envToken: "nmb_env",
       saved: { token: "nmb_saved", email: "s@gmail.com" },
     });
-    expect(fromEnv.auth.state).toEqual({ loggedIn: true, email: null });
+    expect(fromEnv.auth.state).toEqual({ loggedIn: true, email: null, source: "env" });
     expect(await fromEnv.auth.refreshEmail()).toBe("env@gmail.com");
 
     const saved = make({ saved: { token: "nmb_saved", email: "s@gmail.com" } });
-    expect(saved.auth.state).toEqual({ loggedIn: true, email: "s@gmail.com" });
+    expect(saved.auth.state).toEqual({ loggedIn: true, email: "s@gmail.com", source: "saved" });
     expect(saved.client.hasToken).toBe(true);
 
     const none = make();

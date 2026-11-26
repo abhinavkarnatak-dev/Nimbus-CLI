@@ -11,7 +11,9 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:token": "tsx --env-file-if-exists=../../.env scripts/create-token.ts"
+    "db:token": "tsx --env-file-if-exists=../../.env scripts/create-token.ts",
+    "db:invite": "tsx --env-file-if-exists=../../.env scripts/invite.ts",
+    "db:invite-code": "tsx --env-file-if-exists=../../.env scripts/invite-code.ts"
   },
   "dependencies": {
     "@hono/node-server": "1.19.19",
