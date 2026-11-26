@@ -24,10 +24,14 @@ export {
   type ToolResult,
   type ToolSpec,
 } from "./tools/types.js";
+export { globTool } from "./tools/glob.js";
+export { grepTool } from "./tools/grep.js";
 export { readFileTool } from "./tools/read-file.js";
 export { truncateOutput } from "./tools/truncate.js";
 
+import { globTool } from "./tools/glob.js";
+import { grepTool } from "./tools/grep.js";
 import { readFileTool } from "./tools/read-file.js";
 import type { Tool } from "./tools/types.js";
 
-export const defaultTools: Tool[] = [readFileTool];
+export const defaultTools: Tool[] = [readFileTool, globTool, grepTool];

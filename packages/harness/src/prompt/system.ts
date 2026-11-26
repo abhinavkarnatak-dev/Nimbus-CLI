@@ -51,6 +51,7 @@ ${find.join("\n")}
 
 Working well:
 - Start broad, then narrow. One good search is better than reading many files.
+- Prefer one combined search over several similar ones.
 - Do not read the same file part twice. Reuse what you already read.
 - Never guess what a file contains. If you have not read it, say so or read it.
 - If a search finds nothing, try one or two other spellings or patterns, then
