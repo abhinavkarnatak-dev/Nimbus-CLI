@@ -11,12 +11,22 @@
   ],
   "scripts": {
     "build": "tsup",
-    "dev": "tsx --env-file-if-exists=../../.env src/index.ts",
+    "dev": "tsx --env-file-if-exists=../../.env src/index.tsx",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@nimbus/harness": "workspace:*"
+    "@nimbus/harness": "workspace:*",
+    "chalk": "5.6.2",
+    "ink": "7.1.1",
+    "ink-spinner": "5.0.0",
+    "marked": "17.0.6",
+    "marked-terminal": "7.3.1",
+    "react": "19.2.9"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "ink-testing-library": "4.0.0"
   }
 }
