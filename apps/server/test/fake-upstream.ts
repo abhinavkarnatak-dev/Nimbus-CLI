@@ -8,7 +8,7 @@ export const SSE_EVENTS = [
       status: "completed",
       usage: {
         input_tokens: 1200,
-        input_tokens_details: { cached_tokens: 1000 },
+        input_tokens_details: { cached_tokens: 1000, cache_write_tokens: 200 },
         output_tokens: 40,
       },
     },

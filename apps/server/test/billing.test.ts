@@ -22,31 +22,35 @@ const report = (end: CallReport["end"]): CallReport => ({
 });
 
 describe("billing", () => {
-  it("prices calls in whole micro-dollars, rounding up", () => {
-    expect(
-      costMicroUsd("gpt-6-luna", { inputTokens: 1_000_000, cachedTokens: 0, outputTokens: 0 }),
-    ).toBe(100_000);
-    expect(
-      costMicroUsd("gpt-6.1-terra", { inputTokens: 0, cachedTokens: 0, outputTokens: 1 }),
-    ).toBe(5);
-    expect(costMicroUsd("gpt-6-luna", { inputTokens: 1, cachedTokens: 0, outputTokens: 0 })).toBe(
-      1,
-    );
-    expect(() =>
-      costMicroUsd("gpt-unknown", { inputTokens: 1, cachedTokens: 0, outputTokens: 0 }),
-    ).toThrow();
+  const counts = (input: number, cached: number, writes: number, output: number) => ({
+    inputTokens: input,
+    cachedTokens: cached,
+    cacheWriteTokens: writes,
+    outputTokens: output,
   });
 
-  it("estimates about four characters per token and never assumes cache hits", () => {
-    expect(estimateCounts(4001, 9)).toEqual({
-      inputTokens: 1001,
-      cachedTokens: 0,
-      outputTokens: 3,
-    });
+  it("prices calls in whole micro-dollars, rounding up", () => {
+    expect(costMicroUsd("gpt-6-luna", counts(100_000, 0, 0, 0))).toBe(10_000);
+    expect(costMicroUsd("gpt-6.1-terra", counts(0, 0, 0, 1))).toBe(5);
+    expect(costMicroUsd("gpt-6-luna", counts(1, 0, 0, 0))).toBe(1);
+    expect(() => costMicroUsd("gpt-unknown", counts(1, 0, 0, 0))).toThrow();
+  });
+
+  it("bills cache writes above plain input and long prompts at the long-context rate", () => {
+    // 100k tokens written to the cache cost 1.25x plain input
+    expect(costMicroUsd("gpt-6-luna", counts(100_000, 0, 100_000, 0))).toBe(12_500);
+    expect(costMicroUsd("gpt-6-luna", counts(100_000, 100_000, 0, 0))).toBe(1_000);
+    // Over 272k input: 2x input, 1.5x output for the whole request
+    expect(costMicroUsd("gpt-6-luna", counts(300_000, 0, 0, 1000))).toBe(60_000 + 750);
+  });
+
+  it("estimates about four characters per token and treats uncached input as written", () => {
+    expect(estimateCounts(4001, 9)).toEqual(counts(1001, 0, 1001, 3));
+    expect(estimateCounts(4000, 0, 0.75)).toEqual(counts(1000, 750, 250, 0));
   });
 
   it("uses real usage when the final event arrived", () => {
-    const usage = { inputTokens: 10, cachedTokens: 5, outputTokens: 2 };
+    const usage = { inputTokens: 10, cachedTokens: 5, cacheWriteTokens: 0, outputTokens: 2 };
     expect(usageFromReport(report({ kind: "finished", status: "completed", usage }))).toMatchObject(
       {
         outcome: "finished",

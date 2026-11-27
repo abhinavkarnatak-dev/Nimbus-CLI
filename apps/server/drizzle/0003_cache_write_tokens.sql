@@ -1,0 +1,1 @@
+ALTER TABLE "nimbus"."usage_events" ADD COLUMN "cache_write_tokens" integer DEFAULT 0 NOT NULL;

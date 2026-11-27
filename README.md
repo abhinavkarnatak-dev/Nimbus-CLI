@@ -51,6 +51,7 @@ Type `/` inside Nimbus to see every command, or `/help` for the full list.
 - `Enter` sends, `Shift+Enter` or `Ctrl+J` adds a new line
 - `Esc` stops the current reply
 - `Ctrl+L` clears the screen, `/clear` starts a new conversation, `/resume` opens an earlier one
+- The status bar shows how full the conversation is, and `/context` shows what fills it
 - `Ctrl+C` twice quits
 
 ## License

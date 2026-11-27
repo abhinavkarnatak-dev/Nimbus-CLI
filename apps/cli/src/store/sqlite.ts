@@ -58,6 +58,7 @@ const MIGRATIONS = [
      PRIMARY KEY (session_id, turn, path),
      FOREIGN KEY (session_id, turn) REFERENCES turns (session_id, turn) ON DELETE CASCADE
    );`,
+  "ALTER TABLE turns ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0;",
 ];
 
 export interface SavedTurn {
@@ -133,8 +134,8 @@ export function openSessionStore(path: string): SqliteSessionStore {
     "INSERT INTO entries (session_id, turn, kind, data, created_at) VALUES (?, ?, ?, ?, ?)",
   );
   const finishTurn = db.prepare(
-    `UPDATE turns SET status = ?, input_tokens = ?, cached_tokens = ?, output_tokens = ?,
-       cost = ?, ended_at = ? WHERE session_id = ? AND turn = ?`,
+    `UPDATE turns SET status = ?, input_tokens = ?, cached_tokens = ?, cache_write_tokens = ?,
+       output_tokens = ?, cost = ?, ended_at = ? WHERE session_id = ? AND turn = ?`,
   );
   const touch = db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?");
   const upsertChange = db.prepare(
@@ -178,6 +179,7 @@ export function openSessionStore(path: string): SqliteSessionStore {
           status,
           usage.inputTokens,
           usage.cachedTokens,
+          usage.cacheWriteTokens,
           usage.outputTokens,
           cost,
           now,
@@ -253,6 +255,7 @@ export function openSessionStore(path: string): SqliteSessionStore {
             usage: {
               inputTokens: Number(t.input_tokens),
               cachedTokens: Number(t.cached_tokens),
+              cacheWriteTokens: Number(t.cache_write_tokens),
               outputTokens: Number(t.output_tokens),
             },
             cost: Number(t.cost),

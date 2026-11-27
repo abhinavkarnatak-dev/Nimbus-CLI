@@ -26,6 +26,7 @@ function toUsage(usage: ResponseUsage | undefined): Usage {
   return {
     inputTokens: usage.input_tokens,
     cachedTokens: usage.input_tokens_details.cached_tokens,
+    cacheWriteTokens: usage.input_tokens_details.cache_write_tokens ?? 0,
     outputTokens: usage.output_tokens,
   };
 }

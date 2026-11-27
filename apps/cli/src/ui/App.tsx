@@ -1,4 +1,4 @@
-import type { Session, Usage } from "@nimbus/harness";
+import { cacheSavings, type ContextUsage, type Session, type Usage } from "@nimbus/harness";
 import type { AuthController } from "../auth/controller.js";
 import type { BillingController } from "../billing/controller.js";
 import type { Route } from "../settings.js";
@@ -50,6 +50,40 @@ function resumedItems(saved: SavedSession): Item[] {
   ];
 }
 
+const BAR_WIDTH = 20;
+
+// What /context shows
+export function contextReport(context: ContextUsage, usage: Usage, model: string): string {
+  const percent = Math.round((context.tokens / context.limit) * 100);
+  const filled = Math.min(BAR_WIDTH, Math.round((context.tokens / context.limit) * BAR_WIDTH));
+  const number = (count: number) => count.toLocaleString("en-US");
+  const row = (label: string, count: number) => `${label.padEnd(18)}${number(count).padStart(9)}`;
+  const { parts } = context;
+  const lines = [
+    `Context  ${number(context.tokens)} of ${number(context.limit)} tokens (${percent}%)${context.estimated ? ", estimated" : ""}`,
+    "█".repeat(filled) + "░".repeat(BAR_WIDTH - filled),
+    "",
+    row("System prompt", parts.system),
+    row("Tools", parts.tools),
+    row("Conversation", parts.conversation),
+    row("Tool calls", parts.toolCalls),
+    row("Reasoning", parts.reasoning),
+    "",
+  ];
+  if (usage.inputTokens === 0) {
+    lines.push("Cache    no model calls yet");
+  } else {
+    const hit = Math.round((usage.cachedTokens / usage.inputTokens) * 100);
+    const saved = cacheSavings(model, usage);
+    lines.push(
+      `Cache    ${hit}% of this session's input came from the cache` +
+        (saved > 0 ? `, saved ${formatCost(saved)}` : ""),
+    );
+  }
+  // Notices indent only their first line
+  return lines.map((line, index) => (index === 0 ? line : `   ${line}`)).join("\n");
+}
+
 function usageReport(usage: Usage, cost: number): string {
   const cached = usage.inputTokens ? Math.round((usage.cachedTokens / usage.inputTokens) * 100) : 0;
   return [
@@ -73,6 +107,8 @@ export function App({
   const initial = typeof resumeOnStart === "object" ? resumeOnStart : undefined;
   const session = useRef<Session>(null as unknown as Session);
   if (!session.current) session.current = createSession(initial);
+  const [contextUsage, setContextUsage] = useState(() => session.current.context());
+  const refreshContext = useCallback(() => setContextUsage(session.current.context()), []);
 
   const [done, setDone] = useState<Item[]>(() =>
     initial ? resumedItems(initial) : [{ kind: "header", id: newId() }],
@@ -167,11 +203,12 @@ export function App({
       }
       void session.current.dispose();
       session.current = createSession(saved);
+      refreshContext();
       process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
       setDone(resumedItems(saved));
       setStaticKey((key) => key + 1);
     },
-    [createSession, notice, sessions],
+    [createSession, notice, sessions, refreshContext],
   );
 
   const quit = useCallback(async () => {
@@ -274,6 +311,7 @@ export function App({
           if (!flushTimer.current) flushTimer.current = setTimeout(() => flush(), FLUSH_MS);
         } else {
           flush();
+          refreshContext();
         }
       }
       flush(true);
@@ -281,9 +319,10 @@ export function App({
       waiting.current = false;
       setRetryWait(null);
       setRunningSince(null);
+      refreshContext();
       if (retry) await runTurn(text, { echo: false, retry: true, switched: true });
     },
-    [append, flush, auth, billing, switchRoute],
+    [append, flush, auth, billing, switchRoute, refreshContext],
   );
 
   // Browser login, then send the message that was waiting for it
@@ -321,6 +360,9 @@ export function App({
         case "/help":
           append({ kind: "assistant", id: newId(), text: HELP_TEXT });
           return;
+        case "/context":
+          notice(contextReport(session.current.context(), session.current.usage, info.model));
+          return;
         case "/usage": {
           const report = usageReport(session.current.usage, session.current.cost);
           if (billing.state.route === "key") {
@@ -346,6 +388,7 @@ export function App({
           const old = session.current;
           void old.dispose();
           session.current = createSession();
+          refreshContext();
           clearScreen();
           return;
         }
@@ -454,9 +497,11 @@ export function App({
       billing,
       clearScreen,
       createSession,
+      info.model,
       notice,
       openPicker,
       quit,
+      refreshContext,
       switchRoute,
     ],
   );
@@ -699,7 +744,7 @@ export function App({
           {menu.length > 0 ? (
             <CommandMenu commands={menu} selected={selected} />
           ) : (
-            <StatusBar model={info.model} hint={hint} />
+            <StatusBar model={info.model} hint={hint} context={contextUsage} />
           )}
         </Box>
       </Box>

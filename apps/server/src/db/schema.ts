@@ -88,6 +88,7 @@ export const usageEvents = nimbus.table(
     responseStatus: text("response_status"),
     inputTokens: integer("input_tokens").notNull(),
     cachedTokens: integer("cached_tokens").notNull(),
+    cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull(),
     costMicroUsd: bigint("cost_micro_usd", { mode: "number" }).notNull(),
     estimated: boolean("estimated").notNull().default(false),

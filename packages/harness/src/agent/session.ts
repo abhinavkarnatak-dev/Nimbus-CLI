@@ -14,6 +14,8 @@ import { ProcessManager } from "../tools/processes.js";
 import type { ShellInfo } from "../tools/shell.js";
 import { truncateOutput } from "../tools/truncate.js";
 import type { SearchFn, Tool, ToolContext, ToolResult, ToolSpec } from "../tools/types.js";
+import { CONTEXT_LIMIT } from "../cost.js";
+import { contextParts, estimateItems, type ContextUsage } from "./context.js";
 import type { AgentEvent } from "./events.js";
 import {
   closeTurn,
@@ -68,11 +70,13 @@ interface TurnState {
   items: HistoryItem[];
   usage: Usage;
   cost: number;
+  lastCall: Usage;
 }
 
 function addUsage(total: Usage, usage: Usage): void {
   total.inputTokens += usage.inputTokens;
   total.cachedTokens += usage.cachedTokens;
+  total.cacheWriteTokens += usage.cacheWriteTokens;
   total.outputTokens += usage.outputTokens;
 }
 
@@ -113,6 +117,10 @@ export class Session {
   #storeError: string | null = null;
   #storeErrorShown = false;
   #pending: TurnState | null = null;
+  // Items of the turn that is running
+  #current: HistoryItem[] | null = null;
+  // Size the API reported after the last call, and how many items it covered
+  #mark: { tokens: number; items: number } | null = null;
   // Outputs by call id, so a call never runs twice
   readonly #outputs = new Map<string, string>();
 
@@ -206,6 +214,30 @@ export class Session {
     if (this.#pending) this.#pending.items = this.#pending.items.filter(keep);
   }
 
+  // How full the context is, exact right after a model call
+  context(): ContextUsage {
+    const items = [...this.#history, ...(this.#current ?? this.#pending?.items ?? [])];
+    const specs = [...this.#tools.values()].map(({ name, description, parameters }) => ({
+      name,
+      description,
+      parameters,
+    }));
+    const mark = this.#mark && items.length >= this.#mark.items ? this.#mark : null;
+    if (!mark) {
+      const parts = contextParts(this.#instructions, specs, items, null);
+      const tokens = Object.values(parts).reduce((sum, part) => sum + part, 0);
+      return { tokens, limit: CONTEXT_LIMIT, estimated: true, parts };
+    }
+    const added = items.slice(mark.items);
+    const tokens = mark.tokens + estimateItems(added);
+    return {
+      tokens,
+      limit: CONTEXT_LIMIT,
+      estimated: added.length > 0,
+      parts: contextParts(this.#instructions, specs, items, tokens),
+    };
+  }
+
   // A failed turn that retry() can pick up
   get canRetry(): boolean {
     return this.#pending !== null;
@@ -227,6 +259,7 @@ export class Session {
       items: [{ role: "user", content: text }],
       usage: emptyUsage(),
       cost: 0,
+      lastCall: emptyUsage(),
     };
     this.#saveItems(turn, state.items);
     yield* this.#run(state, signal);
@@ -255,6 +288,15 @@ export class Session {
   }
 
   async *#run(state: TurnState, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
+    this.#current = state.items;
+    try {
+      yield* this.#steps(state, signal);
+    } finally {
+      this.#current = null;
+    }
+  }
+
+  async *#steps(state: TurnState, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
     const { turn, items: turnItems } = state;
     const ctx: ToolContext = {
       cwd: this.cwd,
@@ -288,6 +330,10 @@ export class Session {
 
         const output = yield* this.#callModel(state, toolSpecs, signal);
         turnItems.push(...output);
+        this.#mark = {
+          tokens: state.lastCall.inputTokens + state.lastCall.outputTokens,
+          items: this.#history.length + turnItems.length,
+        };
         this.#saveItems(turn, output);
         const calls = output.filter(isFunctionCall);
         if (calls.length === 0) break;
@@ -381,6 +427,7 @@ export class Session {
             yield { type: "text_delta", text: event.text };
           } else {
             output = event.output;
+            state.lastCall = event.usage;
             const cost = costOf(this.model, event.usage);
             addUsage(state.usage, event.usage);
             addUsage(this.#usage, event.usage);

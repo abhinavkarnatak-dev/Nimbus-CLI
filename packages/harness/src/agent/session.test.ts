@@ -88,7 +88,12 @@ describe("Session", () => {
   });
 
   it("adds up usage and cost across turns", async () => {
-    const usage = { inputTokens: 1_000_000, cachedTokens: 0, outputTokens: 1_000_000 };
+    const usage = {
+      inputTokens: 100_000,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+      outputTokens: 100_000,
+    };
     const session = newSession(
       new FakeModelClient([
         { text: "a", usage },
@@ -100,11 +105,12 @@ describe("Session", () => {
     await collect(session.send("two"));
 
     expect(session.usage).toEqual({
-      inputTokens: 2_000_000,
+      inputTokens: 200_000,
       cachedTokens: 0,
-      outputTokens: 2_000_000,
+      cacheWriteTokens: 0,
+      outputTokens: 200_000,
     });
-    expect(session.cost).toBeCloseTo(1.2);
+    expect(session.cost).toBeCloseTo(0.12);
   });
 
   it("passes the error code too, for example insufficient_quota", async () => {
@@ -395,7 +401,7 @@ describe("Session", () => {
           ],
           turns: 1,
           title: "before",
-          usage: { inputTokens: 0, cachedTokens: 0, outputTokens: 0 },
+          usage: { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 },
           cost: 0,
         },
       });

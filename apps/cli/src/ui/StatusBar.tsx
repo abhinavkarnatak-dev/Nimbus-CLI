@@ -1,3 +1,4 @@
+import type { ContextUsage } from "@nimbus/harness";
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
 import { useEffect, useState } from "react";
@@ -72,14 +73,35 @@ export function CommandMenu({
 interface Props {
   model: string;
   hint: string;
+  context?: ContextUsage;
 }
 
-// Session tokens live in /usage; they add up the whole context on every call
-export function StatusBar({ model, hint }: Props) {
+// Gray while there is room, then yellow and red
+export function contextColor(percent: number): string {
+  if (percent >= 80) return theme.error;
+  if (percent >= 60) return theme.warning;
+  return theme.muted;
+}
+
+export function contextPercent(context: ContextUsage): number {
+  const percent = Math.round((context.tokens / context.limit) * 100);
+  return context.tokens > 0 ? Math.max(percent, 1) : 0;
+}
+
+export function StatusBar({ model, hint, context }: Props) {
+  const percent = context ? contextPercent(context) : null;
   return (
     <Box paddingX={2} justifyContent="space-between">
       <Text color={theme.muted}>{hint}</Text>
-      <Text color={theme.muted}>{model}</Text>
+      <Text color={theme.muted}>
+        {model}
+        {percent !== null && (
+          <>
+            {" · "}
+            <Text color={contextColor(percent)}>context {percent}%</Text>
+          </>
+        )}
+      </Text>
     </Box>
   );
 }

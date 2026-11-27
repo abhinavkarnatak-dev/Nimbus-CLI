@@ -32,7 +32,10 @@ describe("SQLite session store", () => {
     const session = new Session({
       client: new FakeModelClient([
         { toolCalls: [{ name: "echo", args: { text: "hi" } }], usage: { inputTokens: 100 } },
-        { text: "Done", usage: { inputTokens: 50, cachedTokens: 40, outputTokens: 7 } },
+        {
+          text: "Done",
+          usage: { inputTokens: 50, cachedTokens: 40, cacheWriteTokens: 10, outputTokens: 7 },
+        },
       ]),
       model: "gpt-6-luna",
       instructions: "test",
@@ -61,6 +64,7 @@ describe("SQLite session store", () => {
     expect(saved.turns[0]!.usage).toEqual({
       inputTokens: 150,
       cachedTokens: 40,
+      cacheWriteTokens: 10,
       outputTokens: 7,
     });
     expect(reopened.load("missing")).toBeNull();

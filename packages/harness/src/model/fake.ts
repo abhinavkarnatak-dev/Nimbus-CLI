@@ -54,7 +54,13 @@ export class FakeModelClient implements ModelClient {
     yield {
       type: "completed",
       output,
-      usage: { inputTokens: 0, cachedTokens: 0, outputTokens: 0, ...turn.usage },
+      usage: {
+        inputTokens: 0,
+        cachedTokens: 0,
+        cacheWriteTokens: 0,
+        outputTokens: 0,
+        ...turn.usage,
+      },
     };
   }
 }

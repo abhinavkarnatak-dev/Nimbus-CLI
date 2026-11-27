@@ -204,7 +204,7 @@ describe("App", () => {
             { role: "assistant", content: "Renamed it to formatDate." },
           ],
           views: [],
-          usage: { inputTokens: 10, cachedTokens: 0, outputTokens: 2 },
+          usage: { inputTokens: 10, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 2 },
           cost: 0,
         },
       ],
@@ -305,6 +305,8 @@ describe("App", () => {
     expect(frames.join("\n")).toContain("Shortcuts");
 
     stdin.write("/");
+    await tick();
+    stdin.write("\u001B[B");
     await tick();
     stdin.write("\u001B[B");
     await tick();

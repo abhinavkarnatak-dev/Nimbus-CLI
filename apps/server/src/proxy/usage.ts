@@ -1,6 +1,7 @@
 export interface UpstreamUsage {
   inputTokens: number;
   cachedTokens: number;
+  cacheWriteTokens: number;
   outputTokens: number;
 }
 
@@ -24,10 +25,12 @@ function readUsage(
 ): UpstreamUsage | null {
   const usage = response?.usage;
   if (!usage) return null;
-  const details = usage.input_tokens_details as { cached_tokens?: number } | undefined;
+  const details = usage.input_tokens_details as
+    { cached_tokens?: number; cache_write_tokens?: number } | undefined;
   return {
     inputTokens: Number(usage.input_tokens ?? 0),
     cachedTokens: Number(details?.cached_tokens ?? 0),
+    cacheWriteTokens: Number(details?.cache_write_tokens ?? 0),
     outputTokens: Number(usage.output_tokens ?? 0),
   };
 }

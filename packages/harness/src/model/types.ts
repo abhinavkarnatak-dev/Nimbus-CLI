@@ -13,7 +13,10 @@ export function isFunctionCall(item: HistoryItem): item is FunctionCallItem {
 
 export interface Usage {
   inputTokens: number;
+  // Read from the prompt cache
   cachedTokens: number;
+  // Written to the prompt cache, billed above normal input
+  cacheWriteTokens: number;
   outputTokens: number;
 }
 
@@ -33,5 +36,5 @@ export interface ModelClient {
 }
 
 export function emptyUsage(): Usage {
-  return { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+  return { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
 }

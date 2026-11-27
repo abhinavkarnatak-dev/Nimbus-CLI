@@ -43,7 +43,21 @@ export {
   type ModelRequest,
   type Usage,
 } from "./model/types.js";
-export { costOf, MODEL_PRICES, type ModelPrice } from "./cost.js";
+export {
+  CONTEXT_LIMIT,
+  costMicroUsd,
+  costOf,
+  LONG_CONTEXT_TOKENS,
+  MODEL_PRICES,
+  cacheSavings,
+  type ModelPrice,
+} from "./cost.js";
+export {
+  contextParts,
+  estimateTokens,
+  type ContextParts,
+  type ContextUsage,
+} from "./agent/context.js";
 export { buildSystemPrompt, detectEnvironment, type Environment } from "./prompt/system.js";
 export {
   defineTool,

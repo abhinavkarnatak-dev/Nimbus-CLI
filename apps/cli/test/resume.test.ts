@@ -34,7 +34,7 @@ const saved: SavedSession = {
           durationMs: 3,
         },
       ],
-      usage: { inputTokens: 100, cachedTokens: 50, outputTokens: 10 },
+      usage: { inputTokens: 100, cachedTokens: 50, cacheWriteTokens: 0, outputTokens: 10 },
       cost: 0.01,
     },
     {
@@ -42,7 +42,7 @@ const saved: SavedSession = {
       status: "failed",
       items: [{ role: "user", content: "never seen" }],
       views: [],
-      usage: { inputTokens: 5, cachedTokens: 0, outputTokens: 0 },
+      usage: { inputTokens: 5, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 },
       cost: 0.001,
     },
     {
@@ -55,7 +55,7 @@ const saved: SavedSession = {
         { role: "user", content: STOPPED_NOTE },
       ],
       views: [],
-      usage: { inputTokens: 20, cachedTokens: 0, outputTokens: 2 },
+      usage: { inputTokens: 20, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 2 },
       cost: 0.002,
     },
   ],
@@ -87,7 +87,12 @@ describe("resume", () => {
     const state = resumeStateFrom(saved);
     expect(state.turns).toBe(3);
     expect(state.title).toBe("fix it");
-    expect(state.usage).toEqual({ inputTokens: 125, cachedTokens: 50, outputTokens: 12 });
+    expect(state.usage).toEqual({
+      inputTokens: 125,
+      cachedTokens: 50,
+      cacheWriteTokens: 0,
+      outputTokens: 12,
+    });
     expect(state.history).toContainEqual({ role: "user", content: ERROR_NOTE });
     expect(state.commandTurns).toEqual([]);
     expect(state.fileChanges).toEqual([]);
@@ -104,7 +109,7 @@ describe("resume", () => {
 
   it("lists this folder's conversations, newest first", async () => {
     const store = openSessionStore(join(await mkdtemp(join(tmpdir(), "nimbus-list-")), "n.db"));
-    const usage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+    const usage = { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
     const add = (id: string, cwd: string, status: "done" | "failed") => {
       store.saveItems({ id, cwd, model: "m", title: id }, 1, [{ role: "user", content: id }]);
       store.endTurn(id, 1, status, usage, 0);

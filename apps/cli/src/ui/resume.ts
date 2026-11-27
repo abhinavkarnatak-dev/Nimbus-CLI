@@ -24,10 +24,11 @@ function textOf(item: HistoryItem): string | null {
 }
 
 export function resumeStateFrom(saved: SavedSession): ResumeState {
-  const usage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+  const usage = { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
   for (const turn of saved.turns) {
     usage.inputTokens += turn.usage.inputTokens;
     usage.cachedTokens += turn.usage.cachedTokens;
+    usage.cacheWriteTokens += turn.usage.cacheWriteTokens;
     usage.outputTokens += turn.usage.outputTokens;
   }
   return {

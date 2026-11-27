@@ -243,11 +243,12 @@ describe("ledger", () => {
       responseStatus: "completed",
       inputTokens: 1200,
       cachedTokens: 1000,
+      cacheWriteTokens: 200,
       outputTokens: 40,
       estimated: false,
     });
-    // 200 uncached x 0.1 + 1000 cached x 0.01 + 40 out x 0.5 = 50 micro-dollars
-    expect(row!.costMicroUsd).toBe(50);
+    // 200 written x 0.125 + 1000 cached x 0.01 + 40 out x 0.5 = 55 micro-dollars
+    expect(row!.costMicroUsd).toBe(55);
   });
 
   it("records an estimate when the client cancels mid-stream", async () => {
@@ -330,6 +331,7 @@ describe("FinalEventScanner", () => {
     expect(scanner.final?.usage).toEqual({
       inputTokens: 1200,
       cachedTokens: 1000,
+      cacheWriteTokens: 200,
       outputTokens: 40,
     });
     expect(scanner.streamedChars).toBe("Hello there".length);

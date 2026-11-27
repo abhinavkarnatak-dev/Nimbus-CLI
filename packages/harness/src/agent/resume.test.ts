@@ -71,7 +71,7 @@ describe("Session resume", () => {
         ],
         turns: 3,
         title: "earlier",
-        usage: { inputTokens: 100, cachedTokens: 0, outputTokens: 10 },
+        usage: { inputTokens: 100, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 10 },
         cost: 0.5,
       },
     });

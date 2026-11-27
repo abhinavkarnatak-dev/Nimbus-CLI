@@ -1,4 +1,4 @@
-import { MODEL_PRICES } from "@nimbus/harness/cost";
+import { costMicroUsd as rawCost, MODEL_PRICES } from "@nimbus/harness/cost";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "./client.js";
 import { usageEvents, users, type USAGE_OUTCOMES } from "./schema.js";
@@ -6,6 +6,7 @@ import { usageEvents, users, type USAGE_OUTCOMES } from "./schema.js";
 export interface TokenCounts {
   inputTokens: number;
   cachedTokens: number;
+  cacheWriteTokens: number;
   outputTokens: number;
 }
 
@@ -25,12 +26,7 @@ export interface UsageRecord {
 export function costMicroUsd(model: string, counts: TokenCounts): number {
   const price = MODEL_PRICES[model];
   if (!price) throw new Error(`No price for model ${model}.`);
-  const uncached = Math.max(counts.inputTokens - counts.cachedTokens, 0);
-  return Math.ceil(
-    uncached * price.input +
-      counts.cachedTokens * price.cached +
-      counts.outputTokens * price.output,
-  );
+  return Math.ceil(rawCost(price, counts));
 }
 
 // Rough count when the final usage never came: about 4 characters per token
@@ -40,9 +36,12 @@ export function estimateCounts(
   cachedRatio = 0,
 ): TokenCounts {
   const inputTokens = Math.ceil(requestChars / 4);
+  const cachedTokens = Math.floor(inputTokens * Math.min(Math.max(cachedRatio, 0), 1));
   return {
     inputTokens,
-    cachedTokens: Math.floor(inputTokens * Math.min(Math.max(cachedRatio, 0), 1)),
+    cachedTokens,
+    // Assume the rest was written to the cache, the dearer case
+    cacheWriteTokens: inputTokens - cachedTokens,
     outputTokens: Math.ceil(streamedChars / 4),
   };
 }
@@ -81,6 +80,7 @@ async function writeRow(db: Db, record: UsageRecord, cost: number): Promise<void
       responseStatus: record.responseStatus ?? null,
       inputTokens: record.counts.inputTokens,
       cachedTokens: record.counts.cachedTokens,
+      cacheWriteTokens: record.counts.cacheWriteTokens,
       outputTokens: record.counts.outputTokens,
       costMicroUsd: cost,
       estimated: record.estimated,
@@ -113,7 +113,7 @@ export async function recordSearch(
       ...search,
       model: SEARCH_MODEL,
       outcome: "finished",
-      counts: { inputTokens: 0, cachedTokens: 0, outputTokens: 0 },
+      counts: { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 },
       estimated: false,
     },
     SEARCH_COST_MICRO_USD,

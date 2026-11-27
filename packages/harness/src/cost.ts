@@ -4,22 +4,50 @@ import type { Usage } from "./model/types.js";
 export interface ModelPrice {
   input: number;
   cached: number;
+  // 30-minute cache write, the default
+  cacheWrite: number;
   output: number;
 }
 
 export const MODEL_PRICES: Record<string, ModelPrice> = {
-  "gpt-6-luna": { input: 0.1, cached: 0.01, output: 0.5 },
-  "gpt-6.1-terra": { input: 1, cached: 0.05, output: 5 },
+  "gpt-6-luna": { input: 0.1, cached: 0.01, cacheWrite: 0.125, output: 0.5 },
+  "gpt-6.1-terra": { input: 1, cached: 0.05, cacheWrite: 1.25, output: 5 },
 };
+
+// Above this many input tokens the whole request costs more
+export const LONG_CONTEXT_TOKENS = 272_000;
+const LONG_INPUT_RATE = 2;
+const LONG_OUTPUT_RATE = 1.5;
+
+// Nimbus keeps conversations below the long-context price
+export const CONTEXT_LIMIT = LONG_CONTEXT_TOKENS;
+
+// Cost in micro-dollars, not rounded
+export function costMicroUsd(price: ModelPrice, usage: Usage): number {
+  const long = usage.inputTokens > LONG_CONTEXT_TOKENS;
+  const inputRate = long ? LONG_INPUT_RATE : 1;
+  const outputRate = long ? LONG_OUTPUT_RATE : 1;
+  const plain = Math.max(usage.inputTokens - usage.cachedTokens - usage.cacheWriteTokens, 0);
+  return (
+    (plain * price.input +
+      usage.cachedTokens * price.cached +
+      usage.cacheWriteTokens * price.cacheWrite) *
+      inputRate +
+    usage.outputTokens * price.output * outputRate
+  );
+}
 
 export function costOf(model: string, usage: Usage): number {
   const price = MODEL_PRICES[model];
+  return price ? costMicroUsd(price, usage) / 1_000_000 : 0;
+}
+
+// Money the cache saved: cheaper reads minus dearer writes
+export function cacheSavings(model: string, usage: Usage): number {
+  const price = MODEL_PRICES[model];
   if (!price) return 0;
-  const uncached = usage.inputTokens - usage.cachedTokens;
-  return (
-    (uncached * price.input +
-      usage.cachedTokens * price.cached +
-      usage.outputTokens * price.output) /
-    1_000_000
-  );
+  const saved =
+    usage.cachedTokens * (price.input - price.cached) -
+    usage.cacheWriteTokens * (price.cacheWrite - price.input);
+  return saved / 1_000_000;
 }

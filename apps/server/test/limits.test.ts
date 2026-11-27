@@ -71,7 +71,7 @@ describe("quota", () => {
     const rows = await db.select().from(usageEvents).where(eq(usageEvents.userId, userId));
     const ledger = rows.reduce((sum, row) => sum + row.costMicroUsd, 0);
     expect((await user()).spentMicroUsd).toBe(ledger);
-    expect(ledger).toBe(100);
+    expect(ledger).toBe(110);
   });
 
   it("stops a user at the trial quota without calling OpenAI", async () => {
