@@ -60,6 +60,7 @@ const saved: SavedSession = {
     },
   ],
   fileChanges: [],
+  compaction: null,
 };
 
 describe("resume", () => {
@@ -96,6 +97,14 @@ describe("resume", () => {
     expect(state.history).toContainEqual({ role: "user", content: ERROR_NOTE });
     expect(state.commandTurns).toEqual([]);
     expect(state.fileChanges).toEqual([]);
+  });
+
+  it("starts from the latest compaction and adds the turns after it", () => {
+    const summary = { role: "user" as const, content: "[Summary] earlier work" };
+    const state = resumeStateFrom({ ...saved, compaction: { turn: 3, items: [summary] } });
+    expect(state.history[0]).toEqual(summary);
+    expect(state.history).not.toContainEqual({ role: "user", content: "fix it" });
+    expect(state.turns).toBe(3);
   });
 
   it("says how long ago in plain words", () => {

@@ -118,6 +118,68 @@ describe("App", () => {
     unmount();
   });
 
+  it("pauses at the budget and continues the same reply on Enter", async () => {
+    const client = new FakeModelClient([
+      {
+        toolCalls: [{ name: "read_file", args: { path: "a.txt", offset: null, limit: null } }],
+        usage: { inputTokens: 100_000, outputTokens: 10_000 },
+      },
+      { text: "budget answer" },
+    ]);
+    const cwd = await mkdtemp(join(tmpdir(), "nimbus-budget-"));
+    await writeFile(join(cwd, "a.txt"), "hi\n");
+    const createSession = () =>
+      new Session({ client, model: "gpt-6-luna", instructions: "test", cwd, tools: defaultTools });
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd }}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("/budget 0.01");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("this session pauses at $0.01"));
+    stdin.write("read a.txt");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Press Enter to allow $0.01 more"));
+    expect(frames.join("\n")).not.toContain("budget answer");
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("budget answer"));
+    expect(client.requests).toHaveLength(2);
+    unmount();
+  });
+
+  it("compacts the conversation on /compact", async () => {
+    const client = new FakeModelClient([
+      { text: `first answer ${"word ".repeat(2000)}` },
+      { text: "SUMMARY of it" },
+    ]);
+    const createSession = () =>
+      new Session({ client, model: "gpt-6-luna", instructions: "test", cwd: tmpdir() });
+    const { frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("hello");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("first answer"));
+    stdin.write("/compact keep names");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Conversation compacted:"));
+    expect(frames.join("\n")).not.toContain("SUMMARY of it");
+    unmount();
+  });
+
   it("clears the screen with Ctrl+L but keeps the conversation", async () => {
     let made = 0;
     const client = new FakeModelClient([{ text: "first answer" }, { text: "second answer" }]);
@@ -209,6 +271,7 @@ describe("App", () => {
         },
       ],
       fileChanges: [],
+      compaction: null,
     };
     const sessions: SessionHistory = {
       list: () => [{ id: "old", title: "rename the helper", updatedAt: saved.updatedAt, turns: 1 }],
@@ -314,10 +377,12 @@ describe("App", () => {
     await tick();
     stdin.write("\u001B[B");
     await tick();
+    stdin.write("\u001B[B");
+    await tick();
     expect(lastFrame()).toContain("› /usage");
     stdin.write("\r");
     await tick();
-    expect(frames.join("\n")).toContain("Cost $0.0000");
+    expect(frames.join("\n")).toContain("Cost      $0.0000");
     unmount();
   });
 

@@ -32,7 +32,12 @@ export function resumeStateFrom(saved: SavedSession): ResumeState {
     usage.outputTokens += turn.usage.outputTokens;
   }
   return {
-    history: historyFromTurns(saved.turns),
+    history: saved.compaction
+      ? [
+          ...saved.compaction.items,
+          ...historyFromTurns(saved.turns.filter((turn) => turn.turn >= saved.compaction!.turn)),
+        ]
+      : historyFromTurns(saved.turns),
     turns: saved.turns.at(-1)?.turn ?? 0,
     title: saved.info.title,
     usage,

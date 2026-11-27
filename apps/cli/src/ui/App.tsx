@@ -14,6 +14,7 @@ import { LoginPanel, type LoginPhase } from "./LoginPanel.js";
 import { PromptInput } from "./PromptInput.js";
 import { CommandMenu, StatusBar, WorkingLine, type RetryInfo } from "./StatusBar.js";
 import type { SavedSession, SessionHistory } from "../store/sqlite.js";
+import { BudgetPanel, type BudgetPause } from "./BudgetPanel.js";
 import { ResumePanel, type ResumePicker } from "./ResumePanel.js";
 import { timeAgo, transcriptFrom } from "./resume.js";
 import { applyEvent, newId, settle, type Item } from "./transcript.js";
@@ -84,13 +85,34 @@ export function contextReport(context: ContextUsage, usage: Usage, model: string
   return lines.map((line, index) => (index === 0 ? line : `   ${line}`)).join("\n");
 }
 
-function usageReport(usage: Usage, cost: number): string {
+// What /usage shows, one line per row
+export function usageReport(
+  usage: Usage,
+  cost: number,
+  model: string,
+  budget: number | null,
+): string[] {
   const cached = usage.inputTokens ? Math.round((usage.cachedTokens / usage.inputTokens) * 100) : 0;
-  return [
-    `Input ${formatTokens(usage.inputTokens)} tokens (${cached}% cached)`,
-    `Output ${formatTokens(usage.outputTokens)} tokens`,
-    `Cost ${formatCost(cost)}`,
-  ].join(" · ");
+  const saved = cacheSavings(model, usage);
+  const lines = [
+    `Input     ${formatTokens(usage.inputTokens)} tokens (${cached}% from the cache)`,
+    `Output    ${formatTokens(usage.outputTokens)} tokens`,
+    `Cost      ${formatCost(cost)}${saved > 0 ? ` (the cache saved ${formatCost(saved)})` : ""}`,
+  ];
+  if (budget !== null) lines.push(`Budget    ${formatCost(cost)} of ${formatCost(budget)}`);
+  return lines;
+}
+
+// Notices indent only their first line
+const asNotice = (lines: string[]) =>
+  lines.map((line, index) => (index === 0 ? line : `   ${line}`)).join("\n");
+
+// "/budget 0.50" into dollars; null for off, undefined when unreadable
+export function parseBudget(arg: string): number | null | undefined {
+  const text = arg.trim().replace(/^\$/, "");
+  if (text === "off" || text === "none") return null;
+  const value = Number(text);
+  return text !== "" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 export function App({
@@ -123,6 +145,10 @@ export function App({
   const [runningSince, setRunningSince] = useState<number | null>(null);
   const { columns } = useWindowSize();
   const [retryWait, setRetryWait] = useState<RetryInfo | null>(null);
+  const [compacting, setCompacting] = useState(false);
+  const [budgetPause, setBudgetPause] = useState<BudgetPause | null>(null);
+  // What Enter adds at the pause: the amount the user last set
+  const budgetStep = useRef(0);
   const waiting = useRef(false);
   const [queued, setQueued] = useState<string | null>(null);
   const [exitArmed, setExitArmed] = useState(false);
@@ -237,6 +263,11 @@ export function App({
           waiting.current = false;
           setRetryWait(null);
         }
+        if (event.type === "compacting") setCompacting(true);
+        if (event.type === "compacted") setCompacting(false);
+        if (event.type === "budget_reached") {
+          setBudgetPause({ budget: event.budget, step: budgetStep.current || event.budget });
+        }
         if (event.type === "retrying") {
           waiting.current = true;
           setRetryWait({
@@ -318,11 +349,37 @@ export function App({
       controller.current = null;
       waiting.current = false;
       setRetryWait(null);
+      setCompacting(false);
       setRunningSince(null);
       refreshContext();
       if (retry) await runTurn(text, { echo: false, retry: true, switched: true });
     },
     [append, flush, auth, billing, switchRoute, refreshContext],
+  );
+
+  // /compact: shrink the conversation between replies
+  const runCompact = useCallback(
+    async (focus: string) => {
+      if (controller.current) {
+        notice("Wait for the reply to finish, or press esc to stop it, then /compact.");
+        return;
+      }
+      const abort = new AbortController();
+      controller.current = abort;
+      setRunningSince(Date.now());
+      working.current = [];
+      for await (const event of session.current.compact(focus || undefined, abort.signal)) {
+        if (event.type === "compacting") setCompacting(true);
+        working.current = applyEvent(working.current, event);
+        flush();
+      }
+      flush(true);
+      controller.current = null;
+      setCompacting(false);
+      setRunningSince(null);
+      refreshContext();
+    },
+    [flush, notice, refreshContext],
   );
 
   // Browser login, then send the message that was waiting for it
@@ -364,26 +421,56 @@ export function App({
           notice(contextReport(session.current.context(), session.current.usage, info.model));
           return;
         case "/usage": {
-          const report = usageReport(session.current.usage, session.current.cost);
+          const current = session.current;
+          const report = usageReport(current.usage, current.cost, info.model, current.budget);
           if (billing.state.route === "key") {
-            notice(`${report}\nPaid with your OpenAI key (${billing.state.keyHint})`);
+            notice(asNotice([...report, `Paid with your OpenAI key (${billing.state.keyHint})`]));
             return;
           }
           if (!auth.state.loggedIn) {
-            notice(report);
+            notice(asNotice(report));
             return;
           }
-          void auth
-            .account()
-            .then((account) =>
-              notice(
-                account
-                  ? `${report}\nTrial credit: ${formatCost(account.spentMicroUsd / 1e6)} of ${formatCost(account.quotaMicroUsd / 1e6)} used`
-                  : report,
-              ),
-            );
+          void auth.account().then((account) => {
+            const credit = account
+              ? [
+                  `Nimbus credit  ${formatCost(account.spentMicroUsd / 1e6)} of ${formatCost(account.quotaMicroUsd / 1e6)} used`,
+                ]
+              : [];
+            notice(asNotice([...report, ...credit]));
+          });
           return;
         }
+        case "/budget": {
+          const current = session.current;
+          if (!arg.trim()) {
+            notice(
+              current.budget === null
+                ? "No budget set. Use /budget 0.50 to pause this session at $0.50."
+                : `Budget: ${formatCost(current.cost)} of ${formatCost(current.budget)} used. /budget off removes it.`,
+            );
+            return;
+          }
+          const value = parseBudget(arg);
+          if (value === undefined) {
+            notice(
+              "Give the budget in dollars, for example /budget 0.50, or /budget off.",
+              "error",
+            );
+            return;
+          }
+          current.setBudget(value);
+          budgetStep.current = value ?? 0;
+          notice(
+            value === null
+              ? "Budget removed for this session."
+              : `Budget set: this session pauses at ${formatCost(value)}.`,
+          );
+          return;
+        }
+        case "/compact":
+          void runCompact(arg);
+          return;
         case "/clear": {
           const old = session.current;
           void old.dispose();
@@ -502,6 +589,7 @@ export function App({
       openPicker,
       quit,
       refreshContext,
+      runCompact,
       switchRoute,
     ],
   );
@@ -619,6 +707,17 @@ export function App({
       clearScreen();
       return;
     }
+    if (budgetPause) {
+      if (key.return) {
+        setBudgetPause(null);
+        session.current.setBudget(budgetPause.budget + budgetPause.step);
+        void runTurn("", { echo: false, retry: true });
+      } else if (key.escape) {
+        setBudgetPause(null);
+        notice("Stopped at the budget. Send a new message, or raise it with /budget.");
+      }
+      return;
+    }
     if (picker) {
       if (key.upArrow || key.downArrow) {
         const step = key.upArrow ? -1 : 1;
@@ -723,10 +822,17 @@ export function App({
         {live.map((item) =>
           item.kind === "header" ? null : <ItemView key={item.id} item={item} />,
         )}
-        {runningSince !== null && <WorkingLine since={runningSince} retry={retryWait} />}
+        {runningSince !== null && (
+          <WorkingLine
+            since={runningSince}
+            retry={retryWait}
+            label={compacting ? "Compacting conversation…" : undefined}
+          />
+        )}
         <LoginPanel login={login} />
         <BillingPanel panel={panel} />
         <ResumePanel picker={picker} />
+        <BudgetPanel pause={budgetPause} />
         <Box marginTop={1} flexDirection="column">
           <PromptInput
             draft={draft}
@@ -739,7 +845,7 @@ export function App({
             onSelect={setMenuIndex}
             onBrowsingChange={setBrowsingHistory}
             mask={panel.kind === "key"}
-            active={panel.kind !== "use" && !picker}
+            active={panel.kind !== "use" && !picker && !budgetPause}
           />
           {menu.length > 0 ? (
             <CommandMenu commands={menu} selected={selected} />

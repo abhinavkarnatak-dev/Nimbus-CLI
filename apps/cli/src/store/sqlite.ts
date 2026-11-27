@@ -59,6 +59,14 @@ const MIGRATIONS = [
      FOREIGN KEY (session_id, turn) REFERENCES turns (session_id, turn) ON DELETE CASCADE
    );`,
   "ALTER TABLE turns ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0;",
+  // History that replaced earlier turns after compaction
+  `CREATE TABLE compactions (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+     turn INTEGER NOT NULL,
+     items TEXT NOT NULL,
+     created_at INTEGER NOT NULL
+   );`,
 ];
 
 export interface SavedTurn {
@@ -76,6 +84,8 @@ export interface SavedSession {
   updatedAt: number;
   turns: SavedTurn[];
   fileChanges: FileChange[];
+  // Latest compaction: replaces the history before this turn
+  compaction: { turn: number; items: HistoryItem[] } | null;
 }
 
 export interface SessionSummary {
@@ -138,6 +148,9 @@ export function openSessionStore(path: string): SqliteSessionStore {
        output_tokens = ?, cost = ?, ended_at = ? WHERE session_id = ? AND turn = ?`,
   );
   const touch = db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?");
+  const addCompaction = db.prepare(
+    "INSERT INTO compactions (session_id, turn, items, created_at) VALUES (?, ?, ?, ?)",
+  );
   const upsertChange = db.prepare(
     `INSERT INTO file_changes
        (session_id, turn, path, display, turn_title, before, after, too_big, updated_at)
@@ -204,6 +217,10 @@ export function openSessionStore(path: string): SqliteSessionStore {
       );
     },
 
+    saveCompaction(sessionId: string, turn: number, items: HistoryItem[]) {
+      addCompaction.run(sessionId, turn, JSON.stringify(items), Date.now());
+    },
+
     list(cwd: string, limit = 20): SessionSummary[] {
       const rows = db
         .prepare(
@@ -234,6 +251,11 @@ export function openSessionStore(path: string): SqliteSessionStore {
         .prepare("SELECT * FROM file_changes WHERE session_id = ? ORDER BY turn, path")
         .all(sessionId) as Record<string, string | number | Uint8Array | null>[];
       const bytes = (value: unknown) => (value instanceof Uint8Array ? Buffer.from(value) : null);
+      const compaction = db
+        .prepare(
+          "SELECT turn, items FROM compactions WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+        )
+        .get(sessionId) as { turn: number; items: string } | undefined;
       return {
         info: {
           id: String(row.id),
@@ -270,6 +292,9 @@ export function openSessionStore(path: string): SqliteSessionStore {
           after: bytes(c.after),
           tooBig: Number(c.too_big) === 1,
         })),
+        compaction: compaction
+          ? { turn: Number(compaction.turn), items: JSON.parse(compaction.items) as HistoryItem[] }
+          : null,
       };
     },
 

@@ -122,6 +122,7 @@ export class OpenAIModelClient implements ModelClient {
           parameters: tool.parameters,
           strict: true,
         })),
+        ...(request.toolChoice ? { tool_choice: request.toolChoice } : {}),
         prompt_cache_key: request.promptCacheKey,
         include: ["reasoning.encrypted_content"],
         store: false,

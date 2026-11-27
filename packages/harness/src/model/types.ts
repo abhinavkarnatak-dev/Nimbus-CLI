@@ -25,6 +25,8 @@ export interface ModelRequest {
   instructions: string;
   input: HistoryItem[];
   tools?: ToolSpec[];
+  // "none" keeps the tools listed (for the cache) but unused
+  toolChoice?: "none";
   promptCacheKey?: string;
 }
 

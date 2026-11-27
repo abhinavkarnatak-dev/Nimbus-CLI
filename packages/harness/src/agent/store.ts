@@ -29,6 +29,8 @@ export interface SessionStore {
   endTurn(sessionId: string, turn: number, status: TurnStatus, usage: Usage, cost: number): void;
   // Saved again after every write to the same file in a turn
   saveFileChange(sessionId: string, change: FileChange): void;
+  // History before this turn was replaced by these items
+  saveCompaction(sessionId: string, turn: number, items: HistoryItem[]): void;
 }
 
 export interface MemoryTurn {
@@ -70,6 +72,11 @@ export class MemorySessionStore implements SessionStore {
   }
 
   readonly fileChanges = new Map<string, FileChange[]>();
+  readonly compactions = new Map<string, { turn: number; items: HistoryItem[] }>();
+
+  saveCompaction(sessionId: string, turn: number, items: HistoryItem[]): void {
+    this.compactions.set(sessionId, { turn, items: structuredClone(items) });
+  }
 
   saveFileChange(sessionId: string, change: FileChange): void {
     const list = (this.fileChanges.get(sessionId) ?? []).filter(

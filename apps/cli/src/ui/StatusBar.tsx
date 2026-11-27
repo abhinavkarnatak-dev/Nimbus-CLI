@@ -12,7 +12,15 @@ export interface RetryInfo {
   reason: string;
 }
 
-export function WorkingLine({ since, retry }: { since: number; retry?: RetryInfo | null }) {
+export function WorkingLine({
+  since,
+  retry,
+  label = "Working…",
+}: {
+  since: number;
+  retry?: RetryInfo | null;
+  label?: string;
+}) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), retry ? 250 : 1000);
@@ -37,7 +45,7 @@ export function WorkingLine({ since, retry }: { since: number; retry?: RetryInfo
   return (
     <Box marginTop={1}>
       <Text color={theme.accent}>
-        <Spinner type="dots" /> Working…
+        <Spinner type="dots" /> {label}
       </Text>
       <Text color={theme.muted}> ({seconds}s · esc to stop)</Text>
     </Box>

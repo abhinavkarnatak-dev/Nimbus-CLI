@@ -17,7 +17,17 @@ import type { ShellInfo } from "../tools/shell.js";
 import { MAX_TOOL_OUTPUT, truncateOutput } from "../tools/truncate.js";
 import type { SearchFn, Tool, ToolContext, ToolResult, ToolSpec } from "../tools/types.js";
 import { CONTEXT_LIMIT } from "../cost.js";
-import { contextParts, estimateItems, type ContextUsage } from "./context.js";
+import {
+  COMPACT_AT,
+  compactRequest,
+  MIN_COMPACT_TOKENS,
+  PRUNE_ENOUGH,
+  pruneTargets,
+  removedOutputNote,
+  replyText,
+  summaryItem,
+} from "./compact.js";
+import { contextParts, estimateItems, estimateTokens, type ContextUsage } from "./context.js";
 import type { AgentEvent } from "./events.js";
 import {
   closeTurn,
@@ -44,6 +54,10 @@ export const STOPPED_NOTE = "[The user stopped this reply before it finished.]";
 export const STOPPED_TOOL_OUTPUT =
   "Stopped by the user before this finished. It may have partly run, so check before running it again.";
 
+// Seen by the model when the user stopped at the budget pause
+export const BUDGET_NOTE =
+  "[This reply was paused before it finished because the session reached the spending limit the user set with /budget, and the user chose not to continue it. Anything done before the pause did happen, so check before repeating it.]";
+
 // Shown when every retry failed to reach the server
 export const CONNECTION_FAILED =
   "Could not reach the server, even after retrying. Check your internet connection and try again.";
@@ -64,6 +78,8 @@ export interface SessionOptions {
   resume?: ResumeState;
   // Full long tool outputs go here, one folder per session
   outputDir?: string;
+  // Spending limit in USD; the turn pauses before going over
+  budget?: number | null;
   // Retries for a failed model call, never for tools
   maxRetries?: number;
   retryDelay?: (error: unknown, attempt: number) => number;
@@ -75,6 +91,8 @@ interface TurnState {
   usage: Usage;
   cost: number;
   lastCall: Usage;
+  // Stopped before a model call because of the budget
+  paused?: boolean;
 }
 
 function addUsage(total: Usage, usage: Usage): void {
@@ -116,6 +134,7 @@ export class Session {
   readonly #search: SearchFn | undefined;
   readonly #store: SessionStore | undefined;
   readonly #outputDir: string | undefined;
+  #budget: number | null;
   #cost = 0;
   #turn = 0;
   #title = "";
@@ -125,7 +144,7 @@ export class Session {
   // Items of the turn that is running
   #current: HistoryItem[] | null = null;
   // Size the API reported after the last call, and how many items it covered
-  #mark: { tokens: number; items: number } | null = null;
+  #mark: { tokens: number; items: number; exact: boolean } | null = null;
   // Outputs by call id, so a call never runs twice
   readonly #outputs = new Map<string, string>();
 
@@ -143,6 +162,7 @@ export class Session {
     this.#search = options.search;
     this.#store = options.store;
     this.#outputDir = options.outputDir;
+    this.#budget = options.budget ?? null;
     this.#changes = new ChangeLog(
       (change) => this.#save((store) => store.saveFileChange(this.id, change)),
       options.resume?.fileChanges,
@@ -239,9 +259,48 @@ export class Session {
     return {
       tokens,
       limit: CONTEXT_LIMIT,
-      estimated: added.length > 0,
+      estimated: added.length > 0 || !mark.exact,
       parts: contextParts(this.#instructions, specs, items, tokens),
     };
+  }
+
+  get budget(): number | null {
+    return this.#budget;
+  }
+
+  setBudget(usd: number | null): void {
+    this.#budget = usd;
+  }
+
+  // Shrink the conversation now, on /compact
+  async *compact(focus?: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
+    if (this.#pending) this.#keepFailedTurn();
+    if (this.#history.length === 0) {
+      yield { type: "error", message: "There is nothing to compact yet." };
+      return;
+    }
+    // A summary of a short chat is longer than the chat itself
+    const size = estimateItems(this.#history);
+    if (size < MIN_COMPACT_TOKENS) {
+      yield {
+        type: "notice",
+        message: `The conversation is still short (about ${size.toLocaleString("en-US")} tokens), so there is nothing worth compacting yet.`,
+      };
+      return;
+    }
+    const state = this.#newState(this.#turn + 1, []);
+    try {
+      yield* this.#compactNow(state, { focus, manual: true }, signal);
+    } catch (error) {
+      if (signal?.aborted) {
+        yield { type: "turn_cancelled" };
+        return;
+      }
+      yield {
+        type: "error",
+        message: `Could not compact the conversation: ${errorMessage(error)}`,
+      };
+    }
   }
 
   // A failed turn that retry() can pick up
@@ -260,13 +319,7 @@ export class Session {
     if (this.#pending) this.#keepFailedTurn();
     const turn = ++this.#turn;
     if (!this.#title) this.#title = text.trim().slice(0, 120);
-    const state: TurnState = {
-      turn,
-      items: [{ role: "user", content: text }],
-      usage: emptyUsage(),
-      cost: 0,
-      lastCall: emptyUsage(),
-    };
+    const state = this.#newState(turn, [{ role: "user", content: text }]);
     this.#saveItems(turn, state.items);
     yield* this.#run(state, signal);
   }
@@ -285,10 +338,18 @@ export class Session {
     yield* this.#run(state, signal);
   }
 
+  #newState(turn: number, items: HistoryItem[]): TurnState {
+    return { turn, items, usage: emptyUsage(), cost: 0, lastCall: emptyUsage() };
+  }
+
   #keepFailedTurn(): void {
     const state = this.#pending!;
     this.#pending = null;
-    const closing = closeTurn(state.items, ERROR_TOOL_OUTPUT, ERROR_NOTE);
+    const closing = closeTurn(
+      state.items,
+      ERROR_TOOL_OUTPUT,
+      state.paused ? BUDGET_NOTE : ERROR_NOTE,
+    );
     this.#saveItems(state.turn, closing);
     this.#history.push(...state.items, ...closing);
   }
@@ -316,11 +377,7 @@ export class Session {
     };
     const first = turnItems[0] as { content?: unknown } | undefined;
     this.#changes.begin(turn, typeof first?.content === "string" ? first.content : "");
-    const toolSpecs = [...this.#tools.values()].map(({ name, description, parameters }) => ({
-      name,
-      description,
-      parameters,
-    }));
+    const toolSpecs = this.#toolSpecs();
 
     try {
       for (let step = 1; ; step++) {
@@ -335,11 +392,27 @@ export class Session {
           return;
         }
 
+        // Pause before spending past the user's limit
+        if (this.#budget !== null && this.#cost >= this.#budget) {
+          state.paused = true;
+          this.#pending = state;
+          this.#endTurn(turn, "failed", state.usage, state.cost);
+          yield* this.#storeWarning();
+          yield { type: "budget_reached", spent: this.#cost, budget: this.#budget };
+          return;
+        }
+        state.paused = false;
+        const context = this.context();
+        if (context.tokens >= context.limit * COMPACT_AT) {
+          yield* this.#compactNow(state, { manual: false }, signal);
+        }
+
         const output = yield* this.#callModel(state, toolSpecs, signal);
         turnItems.push(...output);
         this.#mark = {
           tokens: state.lastCall.inputTokens + state.lastCall.outputTokens,
           items: this.#history.length + turnItems.length,
+          exact: true,
         };
         this.#saveItems(turn, output);
         const calls = output.filter(isFunctionCall);
@@ -408,11 +481,110 @@ export class Session {
     }
   }
 
+  // Drop old outputs first, summarize only if that is not enough
+  async *#compactNow(
+    state: TurnState,
+    { focus, manual }: { focus?: string; manual: boolean },
+    signal?: AbortSignal,
+  ): AsyncGenerator<AgentEvent> {
+    const before = this.context().tokens;
+    const limit = this.context().limit;
+    yield { type: "compacting", auto: !manual };
+
+    const pruned = await this.#pruneOutputs(state.items);
+    if (pruned.count > 0) {
+      this.#adjustMark(pruned.delta, 0);
+      this.#save((store) => store.saveCompaction(this.id, state.turn, this.#history));
+    }
+    const afterPrune = this.context().tokens;
+    const canSummarize = this.#history.length > 1 || (this.#history.length === 1 && manual);
+    if ((!manual && afterPrune < limit * PRUNE_ENOUGH) || !canSummarize) {
+      yield { type: "compacted", before, after: afterPrune, summarized: false };
+      return;
+    }
+
+    let output: HistoryItem[];
+    try {
+      output = yield* this.#callModel(state, [...this.#toolSpecs()], signal, {
+        input: [...this.#history, { role: "user", content: compactRequest(focus) }],
+        toolChoice: "none",
+        quiet: true,
+      });
+    } catch (error) {
+      if (signal?.aborted || manual) throw error;
+      // The turn goes on without a summary
+      yield {
+        type: "warning",
+        message: `Could not compact the conversation: ${errorMessage(error)}`,
+      };
+      return;
+    }
+    const summary = replyText(output);
+    if (!summary) {
+      if (manual) throw new Error("the model returned an empty summary");
+      yield {
+        type: "warning",
+        message: "Could not compact the conversation: the summary was empty.",
+      };
+      return;
+    }
+    // Reasoning has no readable size: take its share from the real total
+    const isReasoning = (item: HistoryItem) => (item as { type?: string }).type === "reasoning";
+    const reasoningAll = [...this.#history, ...state.items].filter(isReasoning).length;
+    const reasoningOld = this.#history.filter(isReasoning).length;
+    const removedReasoning = reasoningAll
+      ? Math.round((this.context().parts.reasoning * reasoningOld) / reasoningAll)
+      : 0;
+    const old = this.#history.splice(0, this.#history.length, summaryItem(summary));
+    this.#adjustMark(
+      estimateItems(this.#history) - estimateItems(old) - removedReasoning,
+      this.#history.length - old.length,
+    );
+    this.#save((store) => store.saveCompaction(this.id, state.turn, this.#history));
+    yield* this.#storeWarning();
+    yield { type: "compacted", before, after: this.context().tokens, summarized: true };
+  }
+
+  // Start from the real size and adjust by what changed
+  #adjustMark(tokens: number, items: number): void {
+    if (!this.#mark) return;
+    this.#mark = {
+      tokens: Math.max(0, this.#mark.tokens + tokens),
+      items: this.#mark.items + items,
+      exact: false,
+    };
+  }
+
+  // Replace old big tool outputs with a short note
+  async #pruneOutputs(current: HistoryItem[]): Promise<{ count: number; delta: number }> {
+    const all = [...this.#history, ...current];
+    let count = 0;
+    let delta = 0;
+    for (const target of pruneTargets(all)) {
+      const savedAt = await this.#saveOutput(target.callId, target.output, false);
+      const item = all[target.index] as { output: string };
+      item.output = removedOutputNote(target.tool, target.tokens, savedAt);
+      this.#outputs.set(target.callId, item.output);
+      delta += estimateTokens(item.output.length) - target.tokens;
+      count++;
+    }
+    return { count, delta };
+  }
+
+  #toolSpecs(): ToolSpec[] {
+    return [...this.#tools.values()].map(({ name, description, parameters }) => ({
+      name,
+      description,
+      parameters,
+    }));
+  }
+
   // One model step, retried on network and server errors
   async *#callModel(
     state: TurnState,
     tools: ToolSpec[],
     signal?: AbortSignal,
+    options: { input?: HistoryItem[]; toolChoice?: "none"; quiet?: boolean } = {},
   ): AsyncGenerator<AgentEvent, HistoryItem[]> {
     for (let attempt = 1; ; attempt++) {
       let streamed = false;
@@ -422,8 +594,9 @@ export class Session {
           {
             model: this.model,
             instructions: this.#instructions,
-            input: [...this.#history, ...state.items],
+            input: options.input ?? [...this.#history, ...state.items],
             tools: tools.length > 0 ? tools : undefined,
+            toolChoice: options.toolChoice,
             promptCacheKey: this.id,
           },
           signal,
@@ -431,7 +604,7 @@ export class Session {
         for await (const event of events) {
           if (event.type === "text_delta") {
             streamed = true;
-            yield { type: "text_delta", text: event.text };
+            if (!options.quiet) yield { type: "text_delta", text: event.text };
           } else {
             output = event.output;
             state.lastCall = event.usage;
@@ -453,7 +626,7 @@ export class Session {
           maxRetries: this.#maxRetries,
           delayMs,
           reason: retryReason(error),
-          restarted: streamed,
+          restarted: streamed && !options.quiet,
         };
         await sleep(delayMs, signal);
       }
@@ -463,19 +636,23 @@ export class Session {
   // Long output: save it whole, show the start and end
   async #shorten(callId: string, output: string): Promise<string> {
     if (output.length <= MAX_TOOL_OUTPUT) return output;
-    let savedAt: string | null = null;
-    if (this.#outputDir) {
-      const folder = join(this.#outputDir, this.id);
-      const file = join(folder, `${callId.replace(/[^\w-]/g, "_")}.txt`);
-      try {
-        await mkdir(folder, { recursive: true });
-        await writeFile(file, output);
-        savedAt = file;
-      } catch {
-        // Not saved: the model is told the middle is gone
-      }
-    }
+    const savedAt = await this.#saveOutput(callId, output, true);
     return truncateOutput(output, MAX_TOOL_OUTPUT, savedAt);
+  }
+
+  // Full output to a file the model can read later
+  async #saveOutput(callId: string, output: string, overwrite: boolean): Promise<string | null> {
+    if (!this.#outputDir) return null;
+    const folder = join(this.#outputDir, this.id);
+    const file = join(folder, `${callId.replace(/[^\w-]/g, "_")}.txt`);
+    try {
+      await mkdir(folder, { recursive: true });
+      // A cut output was saved whole already; keep that copy
+      await writeFile(file, output, { flag: overwrite ? "w" : "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") return null;
+    }
+    return file;
   }
 
   async #runTool(call: FunctionCallItem, ctx: ToolContext): Promise<ToolResult> {

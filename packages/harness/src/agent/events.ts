@@ -16,6 +16,12 @@ export type AgentEvent =
   | { type: "turn_complete"; usage: Usage; cost: number }
   | { type: "turn_cancelled" }
   | { type: "warning"; message: string }
+  | { type: "notice"; message: string }
+  // The conversation is being shrunk, automatically or by /compact
+  | { type: "compacting"; auto: boolean }
+  | { type: "compacted"; before: number; after: number; summarized: boolean }
+  // Paused before a model call; retry() continues after raising the budget
+  | { type: "budget_reached"; spent: number; budget: number }
   // A model call failed and will be tried again after delayMs
   | {
       type: "retrying";

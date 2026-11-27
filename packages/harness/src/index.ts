@@ -10,7 +10,20 @@ export {
   type ToolView,
   type TurnStatus,
 } from "./agent/store.js";
-export { CONNECTION_FAILED, STOPPED_NOTE, STOPPED_TOOL_OUTPUT } from "./agent/session.js";
+export {
+  BUDGET_NOTE,
+  CONNECTION_FAILED,
+  STOPPED_NOTE,
+  STOPPED_TOOL_OUTPUT,
+} from "./agent/session.js";
+export {
+  COMPACT_AT,
+  COMPACT_REQUEST,
+  compactRequest,
+  removedOutputNote,
+  SUMMARY_PREFIX,
+  summaryItem,
+} from "./agent/compact.js";
 export {
   closeTurn,
   ERROR_NOTE,

@@ -70,6 +70,25 @@ export function applyEvent(items: Item[], event: AgentEvent, now = Date.now()): 
       return event.restarted
         ? [...items, { kind: "notice", id: newId(), text: RESTARTED_NOTICE, tone: "info" }]
         : items;
+    case "compacted": {
+      const tokens = (n: number) => n.toLocaleString("en-US");
+      const how = event.summarized ? "" : " (old tool outputs removed)";
+      const text = `Conversation compacted: ${tokens(event.before)} → ${tokens(event.after)} tokens${how}`;
+      return [...items, { kind: "notice", id: newId(), text, tone: "info" }];
+    }
+    case "budget_reached":
+      return [
+        ...items,
+        {
+          kind: "notice",
+          id: newId(),
+          text: `This session reached its $${event.budget.toFixed(2)} budget.`,
+          tone: "info",
+        },
+      ];
+    case "notice":
+      return [...items, { kind: "notice", id: newId(), text: event.message, tone: "info" }];
+    case "compacting":
     case "turn_complete":
       return items;
   }

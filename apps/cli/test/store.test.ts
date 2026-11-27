@@ -121,6 +121,21 @@ describe("SQLite session store", () => {
     expect(b!.before).toBeNull();
   });
 
+  it("keeps the latest compaction for resume", async () => {
+    const path = await dbPath();
+    const store = openSessionStore(path);
+    store.saveItems({ id: "s1", cwd: "/p", model: "gpt-6-luna", title: "t" }, 1, [
+      { role: "user", content: "t" },
+    ]);
+    store.saveCompaction("s1", 2, [{ role: "user", content: "first summary" }]);
+    store.saveCompaction("s1", 5, [{ role: "user", content: "second summary" }]);
+    store.close();
+    expect(openSessionStore(path).load("s1")!.compaction).toEqual({
+      turn: 5,
+      items: [{ role: "user", content: "second summary" }],
+    });
+  });
+
   it("opens an existing file without running the schema twice", async () => {
     const path = await dbPath();
     openSessionStore(path).close();
