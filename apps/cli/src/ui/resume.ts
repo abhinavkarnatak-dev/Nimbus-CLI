@@ -4,6 +4,7 @@ import {
   historyFromTurns,
   INTERRUPTED_NOTE,
   isFunctionCall,
+  parseSkillRequest,
   STOPPED_NOTE,
   VERIFY_REMINDER,
   type HistoryItem,
@@ -91,7 +92,8 @@ export function transcriptFrom(saved: SavedSession): Item[] {
       } else if (text === INTERRUPTED_NOTE) {
         items.push({ kind: "notice", id: newId(), text: "Nimbus closed here.", tone: "info" });
       } else if (role === "user") {
-        items.push({ kind: "user", id: newId(), text });
+        // A skill run shows as the /name the user typed
+        items.push({ kind: "user", id: newId(), text: parseSkillRequest(text) ?? text });
       } else {
         items.push({ kind: "assistant", id: newId(), text });
       }

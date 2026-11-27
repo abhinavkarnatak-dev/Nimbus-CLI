@@ -1,3 +1,4 @@
+import type { Skill } from "@nimbus/harness";
 export interface SlashCommand {
   name: string;
   description: string;
@@ -24,6 +25,7 @@ export const COMMANDS: SlashCommand[] = [
   { name: "/resume", description: "Open an earlier conversation from this folder" },
   { name: "/init", description: "Write an AGENTS.md that tells Nimbus about this project" },
   { name: "/memory", description: "Show what Nimbus remembers (/memory forget <number>)" },
+  { name: "/skills", description: "Show the skills Nimbus can use (run one with /name)" },
   { name: "/todo", description: "Show the checklist for the current task" },
   { name: "/context", description: "Show how full the conversation is and what fills it" },
   { name: "/compact", description: "Shrink the conversation, optionally with a focus" },
@@ -37,19 +39,29 @@ export const COMMANDS: SlashCommand[] = [
   { name: "/exit", description: "Quit Nimbus" },
 ];
 
+// Skills as commands; built-in commands win a clash
+export function skillCommands(skills: readonly Skill[]): SlashCommand[] {
+  return skills
+    .filter((skill) => !COMMANDS.some((command) => command.name === `/${skill.name}`))
+    .map((skill) => ({ name: `/${skill.name}`, description: skill.description }));
+}
+
 // "/login CODE" into name and argument, for known commands only
-export function parseCommand(text: string): { name: string; arg: string } | null {
-  const match = /^(\/[a-z]+)(?:\s+(.*))?$/i.exec(text.trim());
+export function parseCommand(
+  text: string,
+  extra: readonly SlashCommand[] = [],
+): { name: string; arg: string } | null {
+  const match = /^(\/[a-z0-9][a-z0-9-]*)(?:\s+([\s\S]*))?$/i.exec(text.trim());
   if (!match) return null;
   const name = match[1]!.toLowerCase();
-  const known = COMMANDS.some((command) => command.name === name);
+  const known = [...COMMANDS, ...extra].some((command) => command.name === name);
   if (!known && match[2]) return null;
   return { name, arg: match[2]?.trim() ?? "" };
 }
 
-export function matchCommands(value: string): SlashCommand[] {
+export function matchCommands(value: string, extra: readonly SlashCommand[] = []): SlashCommand[] {
   if (!value.startsWith("/") || value.includes(" ") || value.includes("\n")) return [];
-  return COMMANDS.filter((command) => command.name.startsWith(value.toLowerCase()));
+  return [...COMMANDS, ...extra].filter((command) => command.name.startsWith(value.toLowerCase()));
 }
 
 export const HELP_TEXT = [
@@ -64,6 +76,7 @@ export const HELP_TEXT = [
   "- `Ctrl+L` clear the screen, the conversation stays (`/clear` starts a new one)",
   "- `Up` / `Down` previous messages",
   "- `Tab` complete a command",
+  "- `/<skill name>` run a skill, with optional text after it (see `/skills`)",
   "- `/login CODE` to join with an invite code",
   "- `Ctrl+C` twice to quit",
 ].join("\n");

@@ -1,5 +1,6 @@
 import {
   cacheSavings,
+  skillRequest,
   todoLines,
   type ContextUsage,
   type Session,
@@ -11,7 +12,8 @@ import type { BillingController } from "../billing/controller.js";
 import type { Route } from "../settings.js";
 import { Box, Static, useApp, useInput, useWindowSize } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HELP_TEXT, INIT_REQUEST, matchCommands, parseCommand } from "./commands.js";
+import { HELP_TEXT, INIT_REQUEST, matchCommands, parseCommand, skillCommands } from "./commands.js";
+import { skillsReport } from "./skills.js";
 import { emptyDraft, fromText, type Draft } from "./editor.js";
 import { formatCost, formatTokens } from "./format.js";
 import { Header, type HeaderInfo } from "./Header.js";
@@ -508,6 +510,9 @@ export function App({
           notice(asNotice(memoryReport(memory.list())));
           return;
         }
+        case "/skills":
+          notice(asNotice(skillsReport(session.current.skills)));
+          return;
         case "/permissions": {
           if (!permissions) return;
           const current = permissions.mode;
@@ -677,13 +682,24 @@ export function App({
         case "/exit":
           void quit();
           return;
-        default:
+        default: {
+          const skill = session.current.skills.find((entry) => `/${entry.name}` === name);
+          if (skill) {
+            if (controller.current) {
+              notice(`Wait for the reply to finish, or press esc to stop it, then ${name}.`);
+              return;
+            }
+            append({ kind: "user", id: newId(), text: arg ? `${name} ${arg}` : name });
+            void runTurn(skillRequest(skill, arg), { echo: false });
+            return;
+          }
           append({
             kind: "notice",
             id: newId(),
             text: `Unknown command ${name}. Try /help.`,
             tone: "error",
           });
+        }
       }
     },
     [
@@ -735,7 +751,7 @@ export function App({
         return;
       }
       setHistory((prev) => (prev.at(-1) === text ? prev : [...prev, text]));
-      const command = parseCommand(text);
+      const command = parseCommand(text, skillCommands(session.current.skills));
       if (command) {
         runCommand(command.name, command.arg);
         return;
@@ -934,7 +950,9 @@ export function App({
   });
 
   // A recalled "/login" should not open the menu and take over the arrows
-  const menu = browsingHistory ? [] : matchCommands(draft.value);
+  const menu = browsingHistory
+    ? []
+    : matchCommands(draft.value, skillCommands(session.current.skills));
   const selected = Math.min(menuIndex, Math.max(menu.length - 1, 0));
 
   const hint = exitArmed

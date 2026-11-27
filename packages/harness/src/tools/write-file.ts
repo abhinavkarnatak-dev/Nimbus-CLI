@@ -1,7 +1,7 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
-import { resolveForWrite, toDisplayPath } from "./paths.js";
+import { displayFor, resolveForWrite } from "./paths.js";
 import { assertNotSecret } from "./secrets.js";
 import { decodeText, describeChange, encodeText, isBinary, withEol } from "./text.js";
 import { defineTool } from "./types.js";
@@ -32,8 +32,8 @@ Prefer edit for small changes to existing files.
   schema,
   // Create or fully replace a file
   async run({ path, content }, ctx) {
-    const target = await resolveForWrite(ctx.cwd, path);
-    const display = toDisplayPath(target.root, target.path);
+    const target = await resolveForWrite(ctx.cwd, path, [ctx.skillsDir]);
+    const display = await displayFor(ctx.cwd, target.path);
     assertNotSecret(target.path, display);
 
     if (!target.exists) {

@@ -1,4 +1,5 @@
 import { docsSection, memorySection, type Memories, type ProjectDoc } from "./project.js";
+import { skillsSection, type Skill } from "./skills.js";
 import { detectShell, type ShellInfo } from "../tools/shell.js";
 
 export interface Environment {
@@ -137,6 +138,7 @@ Safety:
 export interface PromptExtras {
   docs?: readonly ProjectDoc[];
   memories?: Memories;
+  skills?: readonly Skill[];
 }
 
 export function buildSystemPrompt(
@@ -155,5 +157,5 @@ Environment:
 Style:
 - Be concise and direct. Prefer short answers unless the user asks for detail.
 - Use plain hyphens (-). Never use en dashes or em dashes.
-- Use Markdown only when it helps (code blocks, short lists).${toolsSection(new Set(toolNames))}${safetySection(new Set(toolNames))}${docsSection(extras.docs ?? [])}${memorySection(extras.memories)}`;
+- Use Markdown only when it helps (code blocks, short lists).${toolsSection(new Set(toolNames))}${safetySection(new Set(toolNames))}${toolNames.includes("load_skill") ? skillsSection(extras.skills) : ""}${docsSection(extras.docs ?? [])}${memorySection(extras.memories)}`;
 }

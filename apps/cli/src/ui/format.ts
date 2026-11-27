@@ -73,6 +73,8 @@ export function toolLabel(name: string, rawArgs: string): { verb: string; target
       return { verb: "Todos", target: "" };
     case "remember":
       return { verb: "Remember", target: clip(str("fact"), 70) };
+    case "load_skill":
+      return { verb: "Skill", target: str("name") };
     case "undo_changes": {
       const replies = typeof args.replies === "number" ? args.replies : 1;
       const paths = Array.isArray(args.paths)
@@ -160,6 +162,8 @@ export function describeResult(name: string, summary: string, isError: boolean):
       return `Updated the list, ${first}`;
     case "remember":
       return first.charAt(0).toUpperCase() + first.slice(1);
+    case "load_skill":
+      return first === "loaded" ? "Loaded" : "No skill with that name";
     case "undo_changes": {
       const undo = /^restored (\d+)(?:, skipped (\d+))?$/.exec(first);
       if (!undo) return first === "nothing to undo" ? "Nothing to undo" : first;

@@ -30,6 +30,7 @@ import {
 import { DECLINED_NOTE, SKIPPED_NOTE, type ApproveFn } from "./approval.js";
 import { TurnChecks, VERIFY_REMINDER } from "./checks.js";
 import { contextParts, estimateItems, estimateTokens, type ContextUsage } from "./context.js";
+import type { Skill } from "../prompt/skills.js";
 import type { MemoryBook } from "../tools/remember.js";
 import { todosFrom, type Todo } from "../tools/todos.js";
 import type { AgentEvent } from "./events.js";
@@ -88,6 +89,10 @@ export interface SessionOptions {
   approve?: ApproveFn;
   // Where the remember tool saves facts
   memory?: MemoryBook;
+  // Skills listed in the system prompt, for load_skill
+  skills?: readonly Skill[];
+  // Personal skills folder, writable outside cwd
+  skillsDir?: string;
   // Retries for a failed model call, never for tools
   maxRetries?: number;
   retryDelay?: (error: unknown, attempt: number) => number;
@@ -147,6 +152,8 @@ export class Session {
   #budget: number | null;
   readonly #approve: ApproveFn | undefined;
   readonly #memory: MemoryBook | undefined;
+  readonly #skills: readonly Skill[];
+  readonly #skillsDir: string | undefined;
   #todos: Todo[] = [];
   #cost = 0;
   #turn = 0;
@@ -178,6 +185,8 @@ export class Session {
     this.#budget = options.budget ?? null;
     this.#approve = options.approve;
     this.#memory = options.memory;
+    this.#skills = options.skills ?? [];
+    this.#skillsDir = options.skillsDir;
     this.#todos = todosFrom(options.resume?.history ?? []);
     this.#changes = new ChangeLog(
       (change) => this.#save((store) => store.saveFileChange(this.id, change)),
@@ -281,6 +290,10 @@ export class Session {
   }
 
   // The model's latest checklist
+  get skills(): readonly Skill[] {
+    return this.#skills;
+  }
+
   get todos(): readonly Todo[] {
     return this.#todos;
   }
@@ -403,6 +416,8 @@ export class Session {
       changes: this.#changes,
       outputDir: this.#outputDir,
       memory: this.#memory,
+      skills: this.#skills,
+      skillsDir: this.#skillsDir,
     };
     const first = turnItems[0] as { content?: unknown } | undefined;
     this.#changes.begin(turn, typeof first?.content === "string" ? first.content : "");

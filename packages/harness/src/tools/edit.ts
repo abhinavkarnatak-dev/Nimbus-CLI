@@ -1,6 +1,6 @@
-import { readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { z } from "zod";
-import { resolveInside, toDisplayPath } from "./paths.js";
+import { displayFor, resolveEditable } from "./paths.js";
 import { assertNotSecret } from "./secrets.js";
 import { decodeText, describeChange, encodeText, isBinary, withEol } from "./text.js";
 import { defineTool } from "./types.js";
@@ -63,8 +63,8 @@ The file must have been read in this session and not changed since.
       );
     }
 
-    const file = await resolveInside(ctx.cwd, path);
-    const display = toDisplayPath(await realpath(ctx.cwd), file);
+    const file = await resolveEditable(ctx.cwd, path, [ctx.skillsDir]);
+    const display = await displayFor(ctx.cwd, file);
     assertNotSecret(file, display);
     if ((await stat(file)).isDirectory()) throw new Error(`${path} is a directory, not a file`);
     await ctx.files.assertFresh(file, display);

@@ -1,7 +1,7 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultTools, FakeModelClient, Session } from "@nimbus/harness";
+import { defaultTools, FakeModelClient, loadSkills, Session, skillRequest } from "@nimbus/harness";
 import { render } from "ink-testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { SwitchableModelClient } from "../src/auth/client.js";
@@ -10,7 +10,7 @@ import { memoryStore } from "../src/auth/credentials.js";
 import { memorySecret } from "../src/auth/secrets.js";
 import { Permissions } from "../src/permissions.js";
 import { FileMemory } from "../src/store/memory.js";
-import { INIT_REQUEST } from "../src/ui/commands.js";
+import { COMMANDS, INIT_REQUEST } from "../src/ui/commands.js";
 import { BillingController } from "../src/billing/controller.js";
 import { RoutingModelClient } from "../src/billing/router.js";
 import { memorySettings } from "../src/settings.js";
@@ -404,6 +404,48 @@ describe("App", () => {
     unmount();
   });
 
+  it("lists skills with /skills and runs one with /name and text", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nimbus-skill-"));
+    await mkdir(join(dir, ".nimbus", "skills", "review"), { recursive: true });
+    await writeFile(
+      join(dir, ".nimbus", "skills", "review", "SKILL.md"),
+      "---\nname: review\ndescription: Review the staged changes\n---\nReview $ARGUMENTS now.\n",
+    );
+    const skills = loadSkills(dir, dir);
+    const client = new FakeModelClient([{ text: "Reviewed" }]);
+    const createSession = () =>
+      new Session({ client, model: "gpt-6-luna", instructions: "t", cwd: dir, skills });
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: dir }}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("/skills");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("/review  Review the staged changes"));
+    expect(frames.join("\n")).toContain("project skill, Nimbus can also use it on its own");
+    expect(frames.join("\n")).toContain("/create-skill");
+
+    stdin.write("/rev");
+    await tick();
+    expect(lastFrame()).toContain("Review the staged changes");
+    stdin.write("iew the auth files");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Reviewed"));
+    expect(frames.join("\n")).toContain("/review the auth files");
+    expect(client.requests[0]!.input[0]).toEqual({
+      role: "user",
+      content: skillRequest(skills[0]!, "the auth files"),
+    });
+    expect(skillRequest(skills[0]!, "the auth files")).toContain("Review the auth files now.");
+    unmount();
+  });
+
   it("clears the screen with Ctrl+L but keeps the conversation", async () => {
     let made = 0;
     const client = new FakeModelClient([{ text: "first answer" }, { text: "second answer" }]);
@@ -593,11 +635,9 @@ describe("App", () => {
 
     stdin.write("/");
     await tick();
-    stdin.write("\u001B[B");
-    await tick();
-    stdin.write("\u001B[B");
-    await tick();
-    for (let i = 0; i < 6; i++) {
+    // Arrow down to /usage, wherever it sits in the list
+    const steps = COMMANDS.findIndex((command) => command.name === "/usage");
+    for (let i = 0; i < steps; i++) {
       stdin.write("\u001B[B");
       await tick();
     }

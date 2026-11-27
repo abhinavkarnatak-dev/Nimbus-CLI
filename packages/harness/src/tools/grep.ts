@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import picomatch from "picomatch";
 import { z } from "zod";
-import { resolveReadable, toDisplayPath } from "./paths.js";
+import { readableDirs, resolveReadable, toDisplayPath } from "./paths.js";
 import { assertNotSecret, isSecretPath } from "./secrets.js";
 import { ALWAYS_EXCLUDED, BASE_RIPGREP_ARGS, runRipgrep } from "./ripgrep.js";
 import { defineTool } from "./types.js";
@@ -81,7 +81,7 @@ export const grepTool = defineTool({
   schema,
   // Search file contents with ripgrep
   async run({ pattern, path, glob, case_insensitive, output_mode }, ctx) {
-    const found = path ? await resolveReadable(ctx.cwd, path, ctx.outputDir) : null;
+    const found = path ? await resolveReadable(ctx.cwd, path, readableDirs(ctx)) : null;
     const root = found?.root ?? (await realpath(ctx.cwd));
     const target = found ? toDisplayPath(root, found.path) : ".";
     if (found) assertNotSecret(found.path, path!);

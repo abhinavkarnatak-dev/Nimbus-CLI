@@ -60,6 +60,27 @@ Type `/` inside Nimbus to see every command, or `/help` for the full list.
 - `/usage` shows what this session cost, and `/budget 0.50` makes Nimbus ask before spending more
 - `Ctrl+C` twice quits
 
+## Skills
+
+A skill is a set of saved instructions for one kind of task, like reviewing changes or writing release notes. Nimbus uses a skill by itself when your request fits it, and you can run one yourself by typing `/` and its name, with optional text after it (`/review the auth files`).
+
+Each skill is a folder with a `SKILL.md` file:
+
+- `.nimbus/skills/<name>/SKILL.md` in a project, for that project
+- `~/.nimbus/skills/<name>/SKILL.md` in your home folder, for every project
+
+```
+---
+name: review
+description: Review the staged changes against our checklist before a commit
+---
+Look at the staged changes with git diff --staged and check ...
+```
+
+The description tells Nimbus when to use the skill. Add `disable-model-invocation: true` under it if only you should run it. `$ARGUMENTS` in the instructions is replaced by the text you type after the name.
+
+The easiest way to make one is `/create-skill`, or just ask Nimbus to make a skill. `/skills` lists them all. New skills show up after `/clear` or in your next session.
+
 ## License
 
 MIT

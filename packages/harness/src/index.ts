@@ -84,6 +84,18 @@ export {
   type ProjectDoc,
 } from "./prompt/project.js";
 export { rememberTool, type MemoryBook, type MemoryScope } from "./tools/remember.js";
+export { loadSkillTool } from "./tools/skill.js";
+export {
+  loadSkills,
+  MAX_LISTED_SKILLS,
+  parseSkillFile,
+  parseSkillRequest,
+  skillRequest,
+  skillsSection,
+  type Skill,
+  type SkillSource,
+} from "./prompt/skills.js";
+export { BUILT_IN_SKILLS } from "./prompt/builtin-skills.js";
 export {
   defineTool,
   type SearchFn,

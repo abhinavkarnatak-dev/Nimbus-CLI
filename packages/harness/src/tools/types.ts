@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { ChangeLog } from "./changes.js";
 import type { FileTracker } from "./file-state.js";
 import type { MemoryBook } from "./remember.js";
+import type { Skill } from "../prompt/skills.js";
 import type { ProcessManager } from "./processes.js";
 import type { ShellInfo } from "./shell.js";
 
@@ -35,6 +36,10 @@ export interface ToolContext {
   outputDir?: string;
   // Facts saved for future sessions
   memory?: MemoryBook;
+  // Skills load_skill can return
+  skills?: readonly Skill[];
+  // Personal skills folder; edit and write_file may change it
+  skillsDir?: string;
 }
 
 export interface ToolResult {

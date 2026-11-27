@@ -7,6 +7,8 @@ import {
   detectShell,
   HARNESS_VERSION,
   loadProjectDocs,
+  loadSkills,
+  loadSkillTool,
   OpenAIModelClient,
   rememberTool,
   Session,
@@ -116,7 +118,7 @@ if (auth.state.loggedIn && !auth.state.email) {
 
 const shell = detectShell();
 const env = detectEnvironment(shell);
-const tools = [...defaultTools, webSearchTool, rememberTool];
+const tools = [...defaultTools, webSearchTool, rememberTool, loadSkillTool];
 
 // Sessions are saved locally; Nimbus still works if the file cannot be opened
 const dataDir = join(homedir(), ".nimbus");
@@ -139,11 +141,12 @@ const memory = new FileMemory(
 // Every new or resumed session starts with no "don't ask again" rules
 const createSession = (saved?: SavedSession) => {
   permissions.resetSession();
-  // Read AGENTS.md and memory again, so /init and new facts apply
+  // Read AGENTS.md, memory and skills again, so new ones apply
+  const skills = loadSkills(env.cwd, homedir());
   const instructions = buildSystemPrompt(
     env,
     tools.map((tool) => tool.name),
-    { docs: loadProjectDocs(env.cwd, homedir()), memories: memory.list() },
+    { docs: loadProjectDocs(env.cwd, homedir()), memories: memory.list(), skills },
   );
   return new Session({
     client,
@@ -157,6 +160,8 @@ const createSession = (saved?: SavedSession) => {
     outputDir,
     approve: permissions.approve,
     memory,
+    skills,
+    skillsDir: join(homedir(), ".nimbus", "skills"),
     id: saved?.info.id,
     resume: saved ? resumeStateFrom(saved) : undefined,
   });
