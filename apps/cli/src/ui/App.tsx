@@ -11,7 +11,7 @@ import type { BillingController } from "../billing/controller.js";
 import type { Route } from "../settings.js";
 import { Box, Static, useApp, useInput, useWindowSize } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HELP_TEXT, matchCommands, parseCommand } from "./commands.js";
+import { HELP_TEXT, INIT_REQUEST, matchCommands, parseCommand } from "./commands.js";
 import { emptyDraft, fromText, type Draft } from "./editor.js";
 import { formatCost, formatTokens } from "./format.js";
 import { Header, type HeaderInfo } from "./Header.js";
@@ -23,13 +23,20 @@ import { CommandMenu, StatusBar, WorkingLine, type RetryInfo } from "./StatusBar
 import type { SavedSession, SessionHistory } from "../store/sqlite.js";
 import { BudgetPanel, type BudgetPause } from "./BudgetPanel.js";
 import { TodoPanel } from "./TodoPanel.js";
-import { ApprovalPanel, approvalOptions, type ApprovalState } from "./ApprovalPanel.js";
+import {
+  ApprovalPanel,
+  approvalOptions,
+  boxLines,
+  fullPreview,
+  type ApprovalState,
+} from "./ApprovalPanel.js";
 import { PermissionsPanel, type ModePicker } from "./PermissionsPanel.js";
 import { MODE_BADGE, MODES, type ApprovalChoice, type Permissions } from "../permissions.js";
+import { memoryReport, type FileMemory } from "../store/memory.js";
 import { ResumePanel, type ResumePicker } from "./ResumePanel.js";
 import { timeAgo, transcriptFrom } from "./resume.js";
 import { applyEvent, newId, settle, type Item } from "./transcript.js";
-import { WidthContext } from "./width.js";
+import { AnimateContext, WidthContext } from "./width.js";
 
 const FLUSH_MS = 50;
 const EXIT_WINDOW_MS = 2000;
@@ -45,6 +52,8 @@ interface Props {
   billing: BillingController;
   // Decides what asks first; the UI answers its questions
   permissions?: Permissions;
+  // Facts the model saved, for /memory
+  memory?: FileMemory;
   // Saved conversations; missing when the store could not open
   sessions?: SessionHistory;
   // --continue passes a session, --resume opens the picker
@@ -138,6 +147,7 @@ export function App({
   sessions,
   resumeOnStart,
   permissions,
+  memory,
 }: Props) {
   const { exit } = useApp();
   const initial = typeof resumeOnStart === "object" ? resumeOnStart : undefined;
@@ -148,24 +158,10 @@ export function App({
   const answer = useRef<((choice: ApprovalChoice) => void) | null>(null);
   const [modePicker, setModePicker] = useState<ModePicker | null>(null);
   const [mode, setMode] = useState(() => permissions?.mode ?? "ask");
-
-  // The session waits here until the user picks an answer
-  useEffect(() => {
-    if (!permissions) return;
-    permissions.prompt = (prompt, signal) =>
-      new Promise<ApprovalChoice>((resolve) => {
-        answer.current = (choice) => {
-          answer.current = null;
-          setApproval(null);
-          resolve(choice);
-        };
-        signal.addEventListener("abort", () => answer.current?.("no"), { once: true });
-        setApproval({ prompt, selected: 0 });
-      });
-    return () => {
-      permissions.prompt = null;
-    };
-  }, [permissions]);
+  const { columns, rows } = useWindowSize();
+  const maxLines = boxLines(rows);
+  const maxLinesRef = useRef(maxLines);
+  maxLinesRef.current = maxLines;
   const [todos, setTodos] = useState<readonly Todo[]>(() => session.current.todos);
   // Context size and checklist both follow the session
   const refreshContext = useCallback(() => {
@@ -184,7 +180,6 @@ export function App({
   const [browsingHistory, setBrowsingHistory] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [runningSince, setRunningSince] = useState<number | null>(null);
-  const { columns } = useWindowSize();
   const [retryWait, setRetryWait] = useState<RetryInfo | null>(null);
   const [compacting, setCompacting] = useState(false);
   const [budgetPause, setBudgetPause] = useState<BudgetPause | null>(null);
@@ -221,6 +216,30 @@ export function App({
       append({ kind: "notice", id: newId(), text, tone }),
     [append],
   );
+
+  // The session waits here until the user picks an answer
+  useEffect(() => {
+    if (!permissions) return;
+    permissions.prompt = (prompt, signal) =>
+      new Promise<ApprovalChoice>((resolve) => {
+        // Too long for the box: print it where it can scroll
+        const full = fullPreview(prompt, maxLinesRef.current);
+        if (full) {
+          flush();
+          notice(asNotice(full.split("\n")));
+        }
+        answer.current = (choice) => {
+          answer.current = null;
+          setApproval(null);
+          resolve(choice);
+        };
+        signal.addEventListener("abort", () => answer.current?.("no"), { once: true });
+        setApproval({ prompt, selected: 0 });
+      });
+    return () => {
+      permissions.prompt = null;
+    };
+  }, [permissions, flush, notice]);
 
   // Change who pays; encrypted reasoning cannot cross accounts
   const switchRoute = useCallback(
@@ -458,6 +477,37 @@ export function App({
         case "/help":
           append({ kind: "assistant", id: newId(), text: HELP_TEXT });
           return;
+        case "/init":
+          if (controller.current) {
+            notice("Wait for the reply to finish, or press esc to stop it, then /init.");
+            return;
+          }
+          append({ kind: "user", id: newId(), text: "/init" });
+          void runTurn(INIT_REQUEST, { echo: false });
+          return;
+        case "/memory": {
+          if (!memory) return;
+          const forget = /^forget\s+(\d+)$/i.exec(arg.trim());
+          if (forget) {
+            const removed = memory.forget(Number(forget[1]));
+            notice(
+              removed
+                ? `Forgot: ${removed}`
+                : "There is no fact with that number. Run /memory to see the list.",
+              removed ? "info" : "error",
+            );
+            return;
+          }
+          if (arg.trim()) {
+            notice(
+              "Use /memory to see what Nimbus remembers, or /memory forget <number>.",
+              "error",
+            );
+            return;
+          }
+          notice(asNotice(memoryReport(memory.list())));
+          return;
+        }
         case "/permissions": {
           if (!permissions) return;
           const current = permissions.mode;
@@ -645,11 +695,13 @@ export function App({
       createSession,
       info.model,
       notice,
+      memory,
       openPicker,
       permissions,
       quit,
       refreshContext,
       runCompact,
+      runTurn,
       switchRoute,
     ],
   );
@@ -899,69 +951,71 @@ export function App({
 
   return (
     <WidthContext.Provider value={columns}>
-      <Box flexDirection="column">
-        <Static key={staticKey} items={done}>
-          {(item) =>
-            item.kind === "header" ? (
-              <Header
-                key={item.id}
-                info={route === "key" ? { ...info, route: "your OpenAI key" } : info}
-                account={account ?? (loggedIn ? undefined : "not logged in")}
-              />
-            ) : (
-              <ItemView key={item.id} item={item} />
-            )
-          }
-        </Static>
-        {live.map((item) =>
-          item.kind === "header" ? null : <ItemView key={item.id} item={item} />,
-        )}
-        {runningSince !== null && <TodoPanel todos={todos} />}
-        {runningSince !== null && (
-          <WorkingLine
-            since={runningSince}
-            retry={retryWait}
-            label={
-              approval
-                ? "Waiting for your answer…"
-                : compacting
-                  ? "Compacting conversation…"
-                  : undefined
+      <AnimateContext.Provider value={!approval}>
+        <Box flexDirection="column">
+          <Static key={staticKey} items={done}>
+            {(item) =>
+              item.kind === "header" ? (
+                <Header
+                  key={item.id}
+                  info={route === "key" ? { ...info, route: "your OpenAI key" } : info}
+                  account={account ?? (loggedIn ? undefined : "not logged in")}
+                />
+              ) : (
+                <ItemView key={item.id} item={item} />
+              )
             }
-          />
-        )}
-        <LoginPanel login={login} />
-        <BillingPanel panel={panel} />
-        <ResumePanel picker={picker} />
-        <BudgetPanel pause={budgetPause} />
-        <ApprovalPanel state={approval} />
-        <PermissionsPanel picker={modePicker} />
-        <Box marginTop={1} flexDirection="column">
-          <PromptInput
-            draft={draft}
-            onChange={setDraft}
-            onSubmit={submit}
-            history={history}
-            placeholder={panel.kind === "key" ? "sk-..." : "Ask Nimbus anything"}
-            menu={menu}
-            selected={selected}
-            onSelect={setMenuIndex}
-            onBrowsingChange={setBrowsingHistory}
-            mask={panel.kind === "key"}
-            active={panel.kind !== "use" && !picker && !budgetPause && !approval && !modePicker}
-          />
-          {menu.length > 0 ? (
-            <CommandMenu commands={menu} selected={selected} />
-          ) : (
-            <StatusBar
-              model={info.model}
-              hint={hint}
-              context={contextUsage}
-              badge={MODE_BADGE[mode]}
+          </Static>
+          {live.map((item) =>
+            item.kind === "header" ? null : <ItemView key={item.id} item={item} />,
+          )}
+          {runningSince !== null && <TodoPanel todos={todos} />}
+          {runningSince !== null && (
+            <WorkingLine
+              since={runningSince}
+              retry={retryWait}
+              label={
+                approval
+                  ? "Waiting for your answer…"
+                  : compacting
+                    ? "Compacting conversation…"
+                    : undefined
+              }
             />
           )}
+          <LoginPanel login={login} />
+          <BillingPanel panel={panel} />
+          <ResumePanel picker={picker} />
+          <BudgetPanel pause={budgetPause} />
+          <ApprovalPanel state={approval} maxLines={maxLines} />
+          <PermissionsPanel picker={modePicker} />
+          <Box marginTop={1} flexDirection="column">
+            <PromptInput
+              draft={draft}
+              onChange={setDraft}
+              onSubmit={submit}
+              history={history}
+              placeholder={panel.kind === "key" ? "sk-..." : "Ask Nimbus anything"}
+              menu={menu}
+              selected={selected}
+              onSelect={setMenuIndex}
+              onBrowsingChange={setBrowsingHistory}
+              mask={panel.kind === "key"}
+              active={panel.kind !== "use" && !picker && !budgetPause && !approval && !modePicker}
+            />
+            {menu.length > 0 ? (
+              <CommandMenu commands={menu} selected={selected} />
+            ) : (
+              <StatusBar
+                model={info.model}
+                hint={hint}
+                context={contextUsage}
+                badge={MODE_BADGE[mode]}
+              />
+            )}
+          </Box>
         </Box>
-      </Box>
+      </AnimateContext.Provider>
     </WidthContext.Provider>
   );
 }

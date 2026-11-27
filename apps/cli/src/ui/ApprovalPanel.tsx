@@ -7,7 +7,13 @@ export interface ApprovalState {
   selected: number;
 }
 
-const MAX_LINES = 10;
+// Most lines the box shows; the rest is printed above it
+export const PREVIEW_LINES = 10;
+
+// Box height that leaves room for the input and status bar
+export function boxLines(rows: number): number {
+  return Math.max(3, Math.min(PREVIEW_LINES, rows - 16));
+}
 
 export function approvalOptions(
   prompt: ApprovalPrompt,
@@ -29,16 +35,45 @@ export function approvalOptions(
 const str = (value: unknown) => (typeof value === "string" ? value : "");
 const lines = (text: string) => text.replace(/\r\n/g, "\n").split("\n");
 
-function clipLines(all: string[]): { shown: string[]; more: number } {
-  return { shown: all.slice(0, MAX_LINES), more: Math.max(0, all.length - MAX_LINES) };
+function clipLines(all: string[], max: number): { shown: string[]; more: number } {
+  return { shown: all.slice(0, max), more: Math.max(0, all.length - max) };
+}
+
+const moreText = (more: number) => `… ${more} more lines, shown in full above`;
+
+// An edit splits the box between old and new lines
+const editLines = (max: number) => Math.max(2, Math.floor(max / 2));
+
+// All of a long edit or file, for the scrollback above the box
+export function fullPreview(prompt: ApprovalPrompt, max = PREVIEW_LINES): string | null {
+  const { tool, args } = prompt.request;
+  if (tool === "edit") {
+    const removed = lines(str(args.old_string));
+    const added = lines(str(args.new_string));
+    const limit = editLines(max);
+    if (removed.length <= limit && added.length <= limit) return null;
+    return [
+      `Full change to ${str(args.path)} (only made if you say yes):`,
+      ...removed.map((line) => `- ${line}`),
+      ...added.map((line) => `+ ${line}`),
+    ].join("\n");
+  }
+  if (tool === "write_file") {
+    const all = lines(str(args.content));
+    if (all.length <= max) return null;
+    return [`Full content of ${str(args.path)} (only written if you say yes):`, "", ...all].join(
+      "\n",
+    );
+  }
+  return null;
 }
 
 // Title and the part of the action worth reading first
-function describe(prompt: ApprovalPrompt) {
+function describe(prompt: ApprovalPrompt, max: number) {
   const { tool, args } = prompt.request;
   if (tool === "edit") {
-    const removed = clipLines(lines(str(args.old_string)));
-    const added = clipLines(lines(str(args.new_string)));
+    const removed = clipLines(lines(str(args.old_string)), editLines(max));
+    const added = clipLines(lines(str(args.new_string)), editLines(max));
     return {
       title: `Edit ${str(args.path)}`,
       body: (
@@ -48,20 +83,20 @@ function describe(prompt: ApprovalPrompt) {
               {`- ${line}`}
             </Text>
           ))}
-          {removed.more > 0 && <Text color={theme.muted}>{`  … ${removed.more} more lines`}</Text>}
+          {removed.more > 0 && <Text color={theme.muted}>{`  ${moreText(removed.more)}`}</Text>}
           {added.shown.map((line, i) => (
             <Text key={`a${i}`} backgroundColor={theme.addedBg} color="white">
               {`+ ${line}`}
             </Text>
           ))}
-          {added.more > 0 && <Text color={theme.muted}>{`  … ${added.more} more lines`}</Text>}
+          {added.more > 0 && <Text color={theme.muted}>{`  ${moreText(added.more)}`}</Text>}
         </>
       ),
     };
   }
   if (tool === "write_file") {
     const all = lines(str(args.content));
-    const { shown, more } = clipLines(all);
+    const { shown, more } = clipLines(all, max);
     return {
       title: `Write ${str(args.path)} (${all.length} line${all.length === 1 ? "" : "s"})`,
       body: (
@@ -71,7 +106,7 @@ function describe(prompt: ApprovalPrompt) {
               {line}
             </Text>
           ))}
-          {more > 0 && <Text color={theme.muted}>{`… ${more} more lines`}</Text>}
+          {more > 0 && <Text color={theme.muted}>{moreText(more)}</Text>}
         </>
       ),
     };
@@ -95,9 +130,16 @@ function describe(prompt: ApprovalPrompt) {
 }
 
 // Asks before an edit or a command
-export function ApprovalPanel({ state }: { state: ApprovalState | null }) {
+export function ApprovalPanel({
+  state,
+  maxLines = PREVIEW_LINES,
+}: {
+  state: ApprovalState | null;
+  // Fewer lines on short terminals, so the box always fits
+  maxLines?: number;
+}) {
   if (!state) return null;
-  const { title, body } = describe(state.prompt);
+  const { title, body } = describe(state.prompt, maxLines);
   const options = approvalOptions(state.prompt);
   return (
     <Box

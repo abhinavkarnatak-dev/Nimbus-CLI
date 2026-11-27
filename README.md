@@ -54,6 +54,8 @@ Type `/` inside Nimbus to see every command, or `/help` for the full list.
 - For bigger tasks Nimbus keeps a checklist you can watch as it works; `/todo` shows it
 - The status bar shows how full the conversation is, and `/context` shows what fills it
 - Long conversations shrink by themselves when they get full; `/compact` does it now
+- Nimbus reads your project's `AGENTS.md` (or `CLAUDE.md`) every session; `/init` writes one for you
+- Tell Nimbus to remember something and it will know it next time; `/memory` shows what it remembers
 - Nimbus asks before it edits files or runs commands; `/permissions` lets it edit without asking, or stop asking (it still asks before git pushes, commits and anything touching secret files like `.env`, which it never reads)
 - `/usage` shows what this session cost, and `/budget 0.50` makes Nimbus ask before spending more
 - `Ctrl+C` twice quits

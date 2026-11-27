@@ -3,10 +3,27 @@ export interface SlashCommand {
   description: string;
 }
 
+// Sent as the user's message on /init; seen by the model
+export const INIT_REQUEST = `Create an AGENTS.md file in the root of this project, for coding agents like you. First
+explore the project: read the README, package and config files, and look at the folder
+layout and a few key source files. Then write AGENTS.md, short and specific to this
+project (under about 80 lines), with these sections:
+- Overview: what the project is and its main parts, in a few lines.
+- Commands: the exact commands to install, run, build, test and lint, taken from the
+  project files.
+- Layout: the important folders and what lives in each.
+- Conventions: code style, naming, patterns and libraries the code already follows.
+- Gotchas: anything easy to get wrong, such as generated files, environment variables
+  (names only, never values) or required setup.
+Only write what you found in the project; do not guess. If AGENTS.md already exists,
+read it and improve it instead of replacing what the user wrote.`;
+
 export const COMMANDS: SlashCommand[] = [
   { name: "/help", description: "Show commands and shortcuts" },
   { name: "/clear", description: "Start a fresh conversation" },
   { name: "/resume", description: "Open an earlier conversation from this folder" },
+  { name: "/init", description: "Write an AGENTS.md that tells Nimbus about this project" },
+  { name: "/memory", description: "Show what Nimbus remembers (/memory forget <number>)" },
   { name: "/todo", description: "Show the checklist for the current task" },
   { name: "/context", description: "Show how full the conversation is and what fills it" },
   { name: "/compact", description: "Shrink the conversation, optionally with a focus" },

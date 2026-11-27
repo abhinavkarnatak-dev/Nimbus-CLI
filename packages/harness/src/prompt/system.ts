@@ -1,3 +1,4 @@
+import { docsSection, memorySection, type Memories, type ProjectDoc } from "./project.js";
 import { detectShell, type ShellInfo } from "../tools/shell.js";
 
 export interface Environment {
@@ -133,7 +134,16 @@ Safety:
   folder, unless the task needs it. Say why before you do it.`;
 }
 
-export function buildSystemPrompt(env: Environment, toolNames: readonly string[] = []): string {
+export interface PromptExtras {
+  docs?: readonly ProjectDoc[];
+  memories?: Memories;
+}
+
+export function buildSystemPrompt(
+  env: Environment,
+  toolNames: readonly string[] = [],
+  extras: PromptExtras = {},
+): string {
   return `You are Nimbus, an AI coding agent that runs in the user's terminal.
 
 Environment:
@@ -145,5 +155,5 @@ Environment:
 Style:
 - Be concise and direct. Prefer short answers unless the user asks for detail.
 - Use plain hyphens (-). Never use en dashes or em dashes.
-- Use Markdown only when it helps (code blocks, short lists).${toolsSection(new Set(toolNames))}${safetySection(new Set(toolNames))}`;
+- Use Markdown only when it helps (code blocks, short lists).${toolsSection(new Set(toolNames))}${safetySection(new Set(toolNames))}${docsSection(extras.docs ?? [])}${memorySection(extras.memories)}`;
 }

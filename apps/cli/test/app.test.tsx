@@ -9,6 +9,8 @@ import { AuthController } from "../src/auth/controller.js";
 import { memoryStore } from "../src/auth/credentials.js";
 import { memorySecret } from "../src/auth/secrets.js";
 import { Permissions } from "../src/permissions.js";
+import { FileMemory } from "../src/store/memory.js";
+import { INIT_REQUEST } from "../src/ui/commands.js";
 import { BillingController } from "../src/billing/controller.js";
 import { RoutingModelClient } from "../src/billing/router.js";
 import { memorySettings } from "../src/settings.js";
@@ -291,6 +293,50 @@ describe("App", () => {
     unmount();
   });
 
+  it("prints a long file above the box and holds the screen still while asking", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nimbus-long-"));
+    const content = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n");
+    const client = new FakeModelClient([
+      { toolCalls: [{ name: "write_file", args: { path: "big.txt", content } }] },
+      { text: "wrote it" },
+    ]);
+    const permissions = new Permissions(memorySettings({}));
+    const createSession = () =>
+      new Session({
+        client,
+        model: "gpt-6-luna",
+        instructions: "test",
+        cwd,
+        tools: defaultTools,
+        approve: permissions.approve,
+      });
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd }}
+        permissions={permissions}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("write a big file");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Write big.txt (30 lines)"));
+    const all = frames.join("\n");
+    expect(all).toContain("Full content of big.txt (only written if you say yes):");
+    expect(all).toContain("line 30");
+    expect(lastFrame()).toContain("more lines, shown in full above");
+    expect(lastFrame()).toContain("◆ Waiting for your answer…");
+    // No spinner or timer ticking while the box is open
+    const count = frames.length;
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+    expect(frames.length).toBe(count);
+    stdin.write("1");
+    await waitFor(() => frames.join("\n").includes("wrote it"));
+    unmount();
+  });
+
   it("switches the permission mode with /permissions", async () => {
     const permissions = new Permissions(memorySettings({}));
     const createSession = () =>
@@ -319,6 +365,42 @@ describe("App", () => {
     await waitFor(() => frames.join("\n").includes("Permissions: Edit files without asking"));
     expect(lastFrame()).toContain("auto edits · gpt-6-luna");
     expect(permissions.mode).toBe("edits");
+    unmount();
+  });
+
+  it("shows and forgets saved facts with /memory, and sends the /init request", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nimbus-mem-"));
+    const memory = new FileMemory(join(dir, "memory.md"), join(dir, "p", "memory.md"), "/proj");
+    memory.save("The user tests with node --test", "user");
+    memory.save("Prices are in rupees", "project");
+    const client = new FakeModelClient([{ text: "Wrote AGENTS.md" }]);
+    const createSession = () =>
+      new Session({ client, model: "gpt-6-luna", instructions: "t", cwd: dir });
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: dir }}
+        memory={memory}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("/memory");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("2. Prices are in rupees"));
+    expect(lastFrame()).toContain("1. The user tests with node --test");
+    stdin.write("/memory forget 1");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Forgot: The user tests with node --test"));
+    expect(memory.list()).toEqual({ user: [], project: ["Prices are in rupees"] });
+
+    stdin.write("/init");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Wrote AGENTS.md"));
+    expect(client.requests[0]!.input[0]).toEqual({ role: "user", content: INIT_REQUEST });
     unmount();
   });
 
@@ -515,14 +597,10 @@ describe("App", () => {
     await tick();
     stdin.write("\u001B[B");
     await tick();
-    stdin.write("\u001B[B");
-    await tick();
-    stdin.write("\u001B[B");
-    await tick();
-    stdin.write("\u001B[B");
-    await tick();
-    stdin.write("\u001B[B");
-    await tick();
+    for (let i = 0; i < 6; i++) {
+      stdin.write("\u001B[B");
+      await tick();
+    }
     expect(lastFrame()).toContain("› /usage");
     stdin.write("\r");
     await tick();

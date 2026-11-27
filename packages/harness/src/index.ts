@@ -71,7 +71,19 @@ export {
   type ContextParts,
   type ContextUsage,
 } from "./agent/context.js";
-export { buildSystemPrompt, detectEnvironment, type Environment } from "./prompt/system.js";
+export {
+  buildSystemPrompt,
+  detectEnvironment,
+  type Environment,
+  type PromptExtras,
+} from "./prompt/system.js";
+export {
+  loadProjectDocs,
+  MAX_DOC_CHARS,
+  type Memories,
+  type ProjectDoc,
+} from "./prompt/project.js";
+export { rememberTool, type MemoryBook, type MemoryScope } from "./tools/remember.js";
 export {
   defineTool,
   type SearchFn,

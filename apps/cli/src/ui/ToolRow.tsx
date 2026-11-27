@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { useWidth } from "./width.js";
+import { useAnimate, useWidth } from "./width.js";
 import Spinner from "ink-spinner";
 import { useEffect, useState } from "react";
 import { describeResult, formatDuration, parseDiff, toolLabel } from "./format.js";
@@ -11,11 +11,13 @@ type ToolItem = Extract<Item, { kind: "tool" }>;
 const MAX_DIFF_LINES = 24;
 
 function Elapsed({ since }: { since: number }) {
+  const animate = useAnimate();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!animate) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [animate]);
   const seconds = Math.floor((now - since) / 1000);
   return seconds >= 2 ? <Text color={theme.muted}> {seconds}s</Text> : null;
 }
@@ -69,6 +71,7 @@ function resultLines(item: ToolItem): { headline: string; extra?: string } {
 
 export function ToolRow({ item }: { item: ToolItem }) {
   const columns = useWidth();
+  const animate = useAnimate();
   const { verb, target } = toolLabel(item.name, item.args);
   const running = item.status === "running";
   const failed = item.status === "error";
@@ -79,9 +82,7 @@ export function ToolRow({ item }: { item: ToolItem }) {
     <Box flexDirection="column" marginTop={1}>
       <Text wrap="truncate-end">
         {running ? (
-          <Text color={theme.accent}>
-            <Spinner type="dots" />
-          </Text>
+          <Text color={theme.accent}>{animate ? <Spinner type="dots" /> : "◆"}</Text>
         ) : (
           <Text color={failed ? theme.error : theme.success}>●</Text>
         )}

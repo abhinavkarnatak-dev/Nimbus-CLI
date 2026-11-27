@@ -4,6 +4,7 @@ import Spinner from "ink-spinner";
 import { useEffect, useState } from "react";
 import type { SlashCommand } from "./commands.js";
 import { theme } from "./theme.js";
+import { useAnimate } from "./width.js";
 
 export interface RetryInfo {
   until: number;
@@ -21,18 +22,20 @@ export function WorkingLine({
   retry?: RetryInfo | null;
   label?: string;
 }) {
+  const animate = useAnimate();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!animate) return;
     const timer = setInterval(() => setNow(Date.now()), retry ? 250 : 1000);
     return () => clearInterval(timer);
-  }, [retry]);
+  }, [retry, animate]);
   if (retry) {
     const left = Math.max(0, Math.ceil((retry.until - now) / 1000));
     const when = left > 0 ? `retrying in ${left}s` : "retrying now";
     return (
       <Box marginTop={1}>
         <Text color={theme.warning}>
-          <Spinner type="dots" /> {retry.reason}, {when}
+          {animate ? <Spinner type="dots" /> : "◆"} {retry.reason}, {when}
         </Text>
         <Text color={theme.muted}>
           {" "}
@@ -42,10 +45,17 @@ export function WorkingLine({
     );
   }
   const seconds = Math.floor((now - since) / 1000);
+  if (!animate) {
+    return (
+      <Box marginTop={1}>
+        <Text color={theme.accent}>◆ {label}</Text>
+      </Box>
+    );
+  }
   return (
     <Box marginTop={1}>
       <Text color={theme.accent}>
-        <Spinner type="dots" /> {label}
+        {animate ? <Spinner type="dots" /> : "◆"} {label}
       </Text>
       <Text color={theme.muted}> ({seconds}s · esc to stop)</Text>
     </Box>

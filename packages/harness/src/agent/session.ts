@@ -30,6 +30,7 @@ import {
 import { DECLINED_NOTE, SKIPPED_NOTE, type ApproveFn } from "./approval.js";
 import { TurnChecks, VERIFY_REMINDER } from "./checks.js";
 import { contextParts, estimateItems, estimateTokens, type ContextUsage } from "./context.js";
+import type { MemoryBook } from "../tools/remember.js";
 import { todosFrom, type Todo } from "../tools/todos.js";
 import type { AgentEvent } from "./events.js";
 import {
@@ -85,6 +86,8 @@ export interface SessionOptions {
   budget?: number | null;
   // Asked before tools that change files or run commands
   approve?: ApproveFn;
+  // Where the remember tool saves facts
+  memory?: MemoryBook;
   // Retries for a failed model call, never for tools
   maxRetries?: number;
   retryDelay?: (error: unknown, attempt: number) => number;
@@ -143,6 +146,7 @@ export class Session {
   readonly #outputDir: string | undefined;
   #budget: number | null;
   readonly #approve: ApproveFn | undefined;
+  readonly #memory: MemoryBook | undefined;
   #todos: Todo[] = [];
   #cost = 0;
   #turn = 0;
@@ -173,6 +177,7 @@ export class Session {
     this.#outputDir = options.outputDir;
     this.#budget = options.budget ?? null;
     this.#approve = options.approve;
+    this.#memory = options.memory;
     this.#todos = todosFrom(options.resume?.history ?? []);
     this.#changes = new ChangeLog(
       (change) => this.#save((store) => store.saveFileChange(this.id, change)),
@@ -397,6 +402,7 @@ export class Session {
       search: this.#search,
       changes: this.#changes,
       outputDir: this.#outputDir,
+      memory: this.#memory,
     };
     const first = turnItems[0] as { content?: unknown } | undefined;
     this.#changes.begin(turn, typeof first?.content === "string" ? first.content : "");

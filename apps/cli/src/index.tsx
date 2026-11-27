@@ -6,7 +6,9 @@ import {
   detectEnvironment,
   detectShell,
   HARNESS_VERSION,
+  loadProjectDocs,
   OpenAIModelClient,
+  rememberTool,
   Session,
   webSearchTool,
 } from "@nimbus/harness";
@@ -25,6 +27,7 @@ import { parseArgs } from "./args.js";
 import { resolveSetup, routeLabel } from "./connection.js";
 import { serverSearch } from "./search.js";
 import { Permissions } from "./permissions.js";
+import { FileMemory, projectMemoryPath } from "./store/memory.js";
 import { cleanOutputs } from "./store/outputs.js";
 import { openSessionStore, type SavedSession, type SqliteSessionStore } from "./store/sqlite.js";
 import { resumeStateFrom } from "./ui/resume.js";
@@ -113,11 +116,7 @@ if (auth.state.loggedIn && !auth.state.email) {
 
 const shell = detectShell();
 const env = detectEnvironment(shell);
-const tools = [...defaultTools, webSearchTool];
-const instructions = buildSystemPrompt(
-  env,
-  tools.map((tool) => tool.name),
-);
+const tools = [...defaultTools, webSearchTool, rememberTool];
 
 // Sessions are saved locally; Nimbus still works if the file cannot be opened
 const dataDir = join(homedir(), ".nimbus");
@@ -131,10 +130,21 @@ try {
 }
 
 const permissions = new Permissions(fileSettings());
+const memory = new FileMemory(
+  join(dataDir, "memory.md"),
+  projectMemoryPath(dataDir, env.cwd),
+  env.cwd,
+);
 
 // Every new or resumed session starts with no "don't ask again" rules
 const createSession = (saved?: SavedSession) => {
   permissions.resetSession();
+  // Read AGENTS.md and memory again, so /init and new facts apply
+  const instructions = buildSystemPrompt(
+    env,
+    tools.map((tool) => tool.name),
+    { docs: loadProjectDocs(env.cwd, homedir()), memories: memory.list() },
+  );
   return new Session({
     client,
     model: MODEL,
@@ -146,6 +156,7 @@ const createSession = (saved?: SavedSession) => {
     store: sessionStore,
     outputDir,
     approve: permissions.approve,
+    memory,
     id: saved?.info.id,
     resume: saved ? resumeStateFrom(saved) : undefined,
   });
@@ -178,6 +189,7 @@ const app = render(
     sessions={sessionStore}
     resumeOnStart={resumeOnStart}
     permissions={permissions}
+    memory={memory}
   />,
   {
     exitOnCtrlC: false,

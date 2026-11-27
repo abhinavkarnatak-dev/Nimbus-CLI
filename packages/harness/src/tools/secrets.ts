@@ -57,3 +57,15 @@ export function alwaysAskReason(command: string): string | null {
   if (/\b(npm|pnpm|yarn)\s+publish\b/i.test(command)) return "This command publishes a package.";
   return null;
 }
+
+// Text that carries a key, token or password
+export function looksSecret(text: string): boolean {
+  return [
+    /\bsk-[A-Za-z0-9_-]{16,}/,
+    /\bgh[pousr]_[A-Za-z0-9]{20,}/,
+    /\bAKIA[0-9A-Z]{16}\b/,
+    /\bxox[abprs]-[A-Za-z0-9-]{10,}/,
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+    /\b(password|passwd|secret|api[_-]?key|token)\s*[:=]\s*\S{4,}/i,
+  ].some((pattern) => pattern.test(text));
+}

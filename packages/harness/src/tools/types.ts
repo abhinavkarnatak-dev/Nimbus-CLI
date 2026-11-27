@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ChangeLog } from "./changes.js";
 import type { FileTracker } from "./file-state.js";
+import type { MemoryBook } from "./remember.js";
 import type { ProcessManager } from "./processes.js";
 import type { ShellInfo } from "./shell.js";
 
@@ -32,6 +33,8 @@ export interface ToolContext {
   changes?: ChangeLog;
   // Where full long outputs are saved; readable by read_file and grep
   outputDir?: string;
+  // Facts saved for future sessions
+  memory?: MemoryBook;
 }
 
 export interface ToolResult {
