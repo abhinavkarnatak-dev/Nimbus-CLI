@@ -11,9 +11,11 @@
 }
 
 .line code {
+  min-width: 0;
   font-size: 0.9375rem;
   white-space: pre;
   overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .prompt {

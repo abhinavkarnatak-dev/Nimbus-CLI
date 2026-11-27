@@ -26,7 +26,7 @@ function CodeLines({ lines }: { lines: Line[] }) {
           {line.kind === "add" && <span className={styles.sign}>+</span>}
           {line.kind === "del" && <span className={styles.sign}>-</span>}
           {line.kind === "ctx" && <span className={styles.sign}> </span>}
-          <span>{line.text || " "}</span>
+          <span className={styles.text}>{line.text || " "}</span>
         </div>
       ))}
     </div>

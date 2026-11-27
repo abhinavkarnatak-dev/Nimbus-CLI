@@ -101,12 +101,15 @@
     position: sticky;
     top: 0;
     height: 100svh;
-    grid-template-columns: minmax(16rem, 24rem) 1fr;
+    grid-template-columns: minmax(16rem, 24rem) minmax(0, 1fr);
     align-items: center;
     padding-block: 0;
   }
 
   .terminal {
+    justify-self: end;
+    width: 100%;
+    max-width: 68rem;
     height: min(78svh, 46rem);
   }
 

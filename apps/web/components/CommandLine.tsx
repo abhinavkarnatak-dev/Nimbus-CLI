@@ -27,7 +27,7 @@ export function CommandLine({ command, typed = false }: { command: string; typed
           onUpdate: () => {
             el.textContent = command.slice(0, Math.round(state.n));
           },
-          scrollTrigger: { trigger: root.current, start: "top 85%", once: true },
+          scrollTrigger: { trigger: root.current, start: "top 95%", once: true },
         });
         return () => {
           el.textContent = command;

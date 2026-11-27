@@ -29,7 +29,7 @@
 
 .list li {
   display: grid;
-  grid-template-columns: minmax(7rem, 14rem) 1fr;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
   align-items: baseline;
   gap: 1.5rem;
   padding: 1.15rem 0;
@@ -58,7 +58,11 @@
 
 @media (min-width: 900px) {
   .head {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
     align-items: end;
+  }
+
+  .list li {
+    grid-template-columns: minmax(7rem, 14rem) minmax(0, 1fr);
   }
 }

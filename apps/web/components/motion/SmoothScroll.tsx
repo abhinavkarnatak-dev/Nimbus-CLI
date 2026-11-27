@@ -7,6 +7,8 @@ import { gsap, prefersReducedMotion, ScrollTrigger } from "@/lib/gsap";
 // Lenis driven by the GSAP ticker
 export function SmoothScroll() {
   useEffect(() => {
+    // Pins and triggers are measured again once the web font changes line heights
+    document.fonts?.ready.then(() => ScrollTrigger.refresh());
     if (prefersReducedMotion()) return;
     const lenis = new Lenis({ lerp: 0.09 });
     lenis.on("scroll", ScrollTrigger.update);
