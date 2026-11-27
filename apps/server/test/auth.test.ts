@@ -248,4 +248,10 @@ describe("login result pages", () => {
     const res = await plain.request("/auth/cli/failed?reason=%3Cscript%3E");
     expect(await res.text()).toContain("Something went wrong");
   });
+
+  it("explains a login that failed while finishing with the server", async () => {
+    const plain = createApp({ config, db, google: fakeGoogle().google, log: silentLogger });
+    const res = await plain.request("/auth/cli/failed?reason=exchange_failed");
+    expect(await res.text()).toContain("could not reach its server");
+  });
 });

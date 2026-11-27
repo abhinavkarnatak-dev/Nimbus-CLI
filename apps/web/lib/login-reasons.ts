@@ -30,6 +30,11 @@ export const LOGIN_FAILURES: Record<string, LoginFailure> = {
     title: "This account is blocked",
     body: "If you think this is a mistake, tell us.",
   },
+  exchange_failed: {
+    title: "Could not finish logging in",
+    body: "Your Google login worked, but Nimbus could not reach its server to finish. Try again in a minute.",
+    command: "nimbus login",
+  },
   google_failed: {
     title: "Google login failed",
     body: "Google did not finish the login. Try again.",

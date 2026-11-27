@@ -35,6 +35,8 @@ const LOGIN_FAILED: Record<string, string> = {
   email_not_verified: "Your Google email is not verified.",
   account_blocked: "This account is blocked.",
   google_failed: "Google login failed. Try again.",
+  exchange_failed:
+    "Your Google login worked, but Nimbus could not reach its server to finish. Run nimbus login again.",
   unknown: "Something went wrong. Run nimbus login again.",
 };
 
