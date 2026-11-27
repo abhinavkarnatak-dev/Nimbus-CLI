@@ -69,6 +69,8 @@ export function toolLabel(name: string, rawArgs: string): { verb: string; target
       return { verb: "Stop", target: str("id") };
     case "web_search":
       return { verb: "Search", target: `"${clip(str("query"), 60)}"` };
+    case "update_todos":
+      return { verb: "Todos", target: "" };
     case "undo_changes": {
       const replies = typeof args.replies === "number" ? args.replies : 1;
       const paths = Array.isArray(args.paths)
@@ -152,6 +154,8 @@ export function describeResult(name: string, summary: string, isError: boolean):
     }
     case "kill_process":
       return first === "stopped" ? "Stopped" : first;
+    case "update_todos":
+      return `Updated the list, ${first}`;
     case "undo_changes": {
       const undo = /^restored (\d+)(?:, skipped (\d+))?$/.exec(first);
       if (!undo) return first === "nothing to undo" ? "Nothing to undo" : first;

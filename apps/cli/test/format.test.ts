@@ -63,6 +63,13 @@ describe("format", () => {
     );
   });
 
+  it("labels and describes update_todos", () => {
+    expect(toolLabel("update_todos", "{}")).toEqual({ verb: "Todos", target: "" });
+    expect(describeResult("update_todos", "1 of 3 done", false)).toBe(
+      "Updated the list, 1 of 3 done",
+    );
+  });
+
   it("labels and describes undo_changes", () => {
     const none = JSON.stringify({ replies: null, paths: null });
     expect(toolLabel("undo_changes", none)).toEqual({ verb: "Undo", target: "last reply" });

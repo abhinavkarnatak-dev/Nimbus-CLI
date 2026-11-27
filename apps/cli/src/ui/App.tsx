@@ -1,4 +1,11 @@
-import { cacheSavings, type ContextUsage, type Session, type Usage } from "@nimbus/harness";
+import {
+  cacheSavings,
+  todoLines,
+  type ContextUsage,
+  type Session,
+  type Todo,
+  type Usage,
+} from "@nimbus/harness";
 import type { AuthController } from "../auth/controller.js";
 import type { BillingController } from "../billing/controller.js";
 import type { Route } from "../settings.js";
@@ -15,6 +22,7 @@ import { PromptInput } from "./PromptInput.js";
 import { CommandMenu, StatusBar, WorkingLine, type RetryInfo } from "./StatusBar.js";
 import type { SavedSession, SessionHistory } from "../store/sqlite.js";
 import { BudgetPanel, type BudgetPause } from "./BudgetPanel.js";
+import { TodoPanel } from "./TodoPanel.js";
 import { ResumePanel, type ResumePicker } from "./ResumePanel.js";
 import { timeAgo, transcriptFrom } from "./resume.js";
 import { applyEvent, newId, settle, type Item } from "./transcript.js";
@@ -130,7 +138,12 @@ export function App({
   const session = useRef<Session>(null as unknown as Session);
   if (!session.current) session.current = createSession(initial);
   const [contextUsage, setContextUsage] = useState(() => session.current.context());
-  const refreshContext = useCallback(() => setContextUsage(session.current.context()), []);
+  const [todos, setTodos] = useState<readonly Todo[]>(() => session.current.todos);
+  // Context size and checklist both follow the session
+  const refreshContext = useCallback(() => {
+    setContextUsage(session.current.context());
+    setTodos(session.current.todos);
+  }, []);
 
   const [done, setDone] = useState<Item[]>(() =>
     initial ? resumedItems(initial) : [{ kind: "header", id: newId() }],
@@ -417,6 +430,15 @@ export function App({
         case "/help":
           append({ kind: "assistant", id: newId(), text: HELP_TEXT });
           return;
+        case "/todo": {
+          const list = session.current.todos;
+          notice(
+            list.length > 0
+              ? asNotice(todoLines(list).split("\n"))
+              : "No checklist yet. Nimbus makes one for tasks with several steps.",
+          );
+          return;
+        }
         case "/context":
           notice(contextReport(session.current.context(), session.current.usage, info.model));
           return;
@@ -822,6 +844,7 @@ export function App({
         {live.map((item) =>
           item.kind === "header" ? null : <ItemView key={item.id} item={item} />,
         )}
+        {runningSince !== null && <TodoPanel todos={todos} />}
         {runningSince !== null && (
           <WorkingLine
             since={runningSince}

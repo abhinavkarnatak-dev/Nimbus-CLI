@@ -27,7 +27,9 @@ import {
   replyText,
   summaryItem,
 } from "./compact.js";
+import { TurnChecks, VERIFY_REMINDER } from "./checks.js";
 import { contextParts, estimateItems, estimateTokens, type ContextUsage } from "./context.js";
+import { todosFrom, type Todo } from "../tools/todos.js";
 import type { AgentEvent } from "./events.js";
 import {
   closeTurn,
@@ -93,6 +95,8 @@ interface TurnState {
   lastCall: Usage;
   // Stopped before a model call because of the budget
   paused?: boolean;
+  // Loops and unchecked code changes in this turn
+  checks: TurnChecks;
 }
 
 function addUsage(total: Usage, usage: Usage): void {
@@ -135,6 +139,7 @@ export class Session {
   readonly #store: SessionStore | undefined;
   readonly #outputDir: string | undefined;
   #budget: number | null;
+  #todos: Todo[] = [];
   #cost = 0;
   #turn = 0;
   #title = "";
@@ -163,6 +168,7 @@ export class Session {
     this.#store = options.store;
     this.#outputDir = options.outputDir;
     this.#budget = options.budget ?? null;
+    this.#todos = todosFrom(options.resume?.history ?? []);
     this.#changes = new ChangeLog(
       (change) => this.#save((store) => store.saveFileChange(this.id, change)),
       options.resume?.fileChanges,
@@ -264,6 +270,11 @@ export class Session {
     };
   }
 
+  // The model's latest checklist
+  get todos(): readonly Todo[] {
+    return this.#todos;
+  }
+
   get budget(): number | null {
     return this.#budget;
   }
@@ -339,7 +350,14 @@ export class Session {
   }
 
   #newState(turn: number, items: HistoryItem[]): TurnState {
-    return { turn, items, usage: emptyUsage(), cost: 0, lastCall: emptyUsage() };
+    return {
+      turn,
+      items,
+      usage: emptyUsage(),
+      cost: 0,
+      lastCall: emptyUsage(),
+      checks: new TurnChecks(),
+    };
   }
 
   #keepFailedTurn(): void {
@@ -416,7 +434,23 @@ export class Session {
         };
         this.#saveItems(turn, output);
         const calls = output.filter(isFunctionCall);
-        if (calls.length === 0) break;
+        if (calls.length === 0) {
+          // Changed code but never ran it: one reminder per turn
+          if (state.checks.needsCheck) {
+            state.checks.reminded = true;
+            const reminder: HistoryItem = { role: "user", content: VERIFY_REMINDER };
+            turnItems.push(reminder);
+            this.#saveItems(turn, [reminder]);
+            yield {
+              type: "notice",
+              message: "Asked the model to check its changes before finishing.",
+            };
+            continue;
+          }
+          break;
+        }
+
+        let looping = false;
 
         for (const call of calls) {
           yield {
@@ -433,10 +467,22 @@ export class Session {
             earlier !== undefined
               ? { output: earlier, summary: "Already ran, reused the earlier result" }
               : await this.#runTool(call, ctx);
+          let shown = earlier ?? (await this.#shorten(call.call_id, result.output));
+          if (earlier === undefined) {
+            const check = state.checks.record(
+              call.name,
+              call.arguments,
+              shown,
+              result.isError ?? false,
+            );
+            if (check.note) shown = `${shown}\n\n${check.note}`;
+            if (check.stop) looping = true;
+            if (call.name === "update_todos" && !result.isError) this.#todos = todosFrom([call]);
+          }
           const outputItem: HistoryItem = {
             type: "function_call_output",
             call_id: call.call_id,
-            output: earlier ?? (await this.#shorten(call.call_id, result.output)),
+            output: shown,
           };
           this.#outputs.set(call.call_id, outputItem.output as string);
           turnItems.push(outputItem);
@@ -451,8 +497,17 @@ export class Session {
           };
           this.#saveItems(turn, [outputItem]);
           this.#save((store) => store.saveToolView(this.id, turn, view));
-          const { callId, ...shown } = view;
-          yield { type: "tool_call_end", id: callId, ...shown };
+          const { callId, ...visible } = view;
+          yield { type: "tool_call_end", id: callId, ...visible };
+        }
+
+        // Same step over and over: stop and let the user steer
+        if (looping) {
+          this.#history.push(...turnItems);
+          this.#endTurn(turn, "done", state.usage, state.cost);
+          yield* this.#storeWarning();
+          yield { type: "loop_stopped" };
+          return;
         }
       }
 

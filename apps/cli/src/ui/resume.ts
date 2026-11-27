@@ -1,14 +1,16 @@
 import {
+  BUDGET_NOTE,
   ERROR_NOTE,
   historyFromTurns,
   INTERRUPTED_NOTE,
   isFunctionCall,
   STOPPED_NOTE,
+  VERIFY_REMINDER,
   type HistoryItem,
   type ResumeState,
 } from "@nimbus/harness";
 import type { SavedSession } from "../store/sqlite.js";
-import { newId, type Item } from "./transcript.js";
+import { CHECK_NOTICE, newId, type Item } from "./transcript.js";
 
 const STOPPED_BY_ERROR = "This reply stopped because of an error.";
 
@@ -79,6 +81,10 @@ export function transcriptFrom(saved: SavedSession): Item[] {
         items.push({ kind: "notice", id: newId(), text: "Stopped by you.", tone: "info" });
       } else if (text === ERROR_NOTE) {
         items.push({ kind: "notice", id: newId(), text: STOPPED_BY_ERROR, tone: "error" });
+      } else if (text === VERIFY_REMINDER) {
+        items.push({ kind: "notice", id: newId(), text: CHECK_NOTICE, tone: "info" });
+      } else if (text === BUDGET_NOTE) {
+        items.push({ kind: "notice", id: newId(), text: "Stopped at the budget.", tone: "info" });
       } else if (text === INTERRUPTED_NOTE) {
         items.push({ kind: "notice", id: newId(), text: "Nimbus closed here.", tone: "info" });
       } else if (role === "user") {

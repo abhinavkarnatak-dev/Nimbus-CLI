@@ -7,6 +7,7 @@ export const COMMANDS: SlashCommand[] = [
   { name: "/help", description: "Show commands and shortcuts" },
   { name: "/clear", description: "Start a fresh conversation" },
   { name: "/resume", description: "Open an earlier conversation from this folder" },
+  { name: "/todo", description: "Show the checklist for the current task" },
   { name: "/context", description: "Show how full the conversation is and what fills it" },
   { name: "/compact", description: "Shrink the conversation, optionally with a focus" },
   { name: "/usage", description: "Show tokens and cost for this session" },

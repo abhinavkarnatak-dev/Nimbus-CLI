@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { applyEvent, RESTARTED_NOTICE, settle, type Item } from "../src/ui/transcript.js";
+import {
+  applyEvent,
+  LOOP_STOPPED,
+  RESTARTED_NOTICE,
+  settle,
+  type Item,
+} from "../src/ui/transcript.js";
 
 describe("transcript", () => {
   it("joins text deltas into one assistant item", () => {
@@ -70,6 +76,11 @@ describe("transcript", () => {
     expect(items.map((item) => item.kind)).toEqual(["assistant", "notice", "assistant"]);
     expect(items[1]).toMatchObject({ text: RESTARTED_NOTICE, tone: "info" });
     expect(items[2]).toMatchObject({ text: "Hello" });
+  });
+
+  it("says when a loop was stopped", () => {
+    const items = applyEvent([], { type: "loop_stopped" });
+    expect(items[0]).toMatchObject({ kind: "notice", text: LOOP_STOPPED, tone: "error" });
   });
 
   it("adds a notice when the turn is stopped", () => {

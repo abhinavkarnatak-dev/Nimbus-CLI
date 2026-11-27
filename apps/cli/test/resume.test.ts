@@ -1,7 +1,13 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ERROR_NOTE, STOPPED_NOTE, type HistoryItem } from "@nimbus/harness";
+import {
+  BUDGET_NOTE,
+  ERROR_NOTE,
+  STOPPED_NOTE,
+  VERIFY_REMINDER,
+  type HistoryItem,
+} from "@nimbus/harness";
 import { describe, expect, it } from "vitest";
 import { openSessionStore, type SavedSession } from "../src/store/sqlite.js";
 import { resumeStateFrom, timeAgo, transcriptFrom } from "../src/ui/resume.js";
@@ -105,6 +111,33 @@ describe("resume", () => {
     expect(state.history[0]).toEqual(summary);
     expect(state.history).not.toContainEqual({ role: "user", content: "fix it" });
     expect(state.turns).toBe(3);
+  });
+
+  it("shows the check reminder and the budget stop as notices, not as user messages", () => {
+    const turn = saved.turns[0]!;
+    const items = transcriptFrom({
+      ...saved,
+      turns: [
+        {
+          ...turn,
+          items: [
+            ...turn.items,
+            { role: "user", content: VERIFY_REMINDER },
+            { role: "user", content: BUDGET_NOTE },
+          ],
+        },
+      ],
+    });
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        kind: "notice",
+        text: "Asked the model to check its changes before finishing.",
+      }),
+    );
+    expect(items).toContainEqual(
+      expect.objectContaining({ kind: "notice", text: "Stopped at the budget." }),
+    );
+    expect(items.some((item) => item.kind === "user" && item.text === VERIFY_REMINDER)).toBe(false);
   });
 
   it("says how long ago in plain words", () => {

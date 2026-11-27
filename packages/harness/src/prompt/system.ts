@@ -40,6 +40,13 @@ function toolsSection(tools: ReadonlySet<string>): string {
   }
 
   const canEdit = tools.has("edit") || tools.has("write_file");
+  const planning =
+    (tools.has("update_todos")
+      ? "\n- For tasks with several steps, plan them with update_todos first, then work through\n  the list one item at a time."
+      : "") +
+    (canEdit
+      ? "\n- Before you say a task is done, check it: run the project's tests, build or the\n  changed script when they exist, and read back the parts you changed. Say what you\n  checked, or that there was nothing to run."
+      : "");
   const editing = canEdit
     ? `
 
@@ -100,7 +107,7 @@ Working well:
 - Never guess what a file contains. If you have not read it, say so or read it.
 - If a search finds nothing, try one or two other spellings or patterns, then
   tell the user what you searched for.
-- Stop using tools as soon as you have enough to answer.
+- Stop using tools as soon as you have enough to answer.${planning}
 
 Answering:
 - Paths are relative to the working directory and use forward slashes.

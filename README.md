@@ -51,6 +51,7 @@ Type `/` inside Nimbus to see every command, or `/help` for the full list.
 - `Enter` sends, `Shift+Enter` or `Ctrl+J` adds a new line
 - `Esc` stops the current reply
 - `Ctrl+L` clears the screen, `/clear` starts a new conversation, `/resume` opens an earlier one
+- For bigger tasks Nimbus keeps a checklist you can watch as it works; `/todo` shows it
 - The status bar shows how full the conversation is, and `/context` shows what fills it
 - Long conversations shrink by themselves when they get full; `/compact` does it now
 - `/usage` shows what this session cost, and `/budget 0.50` makes Nimbus ask before spending more

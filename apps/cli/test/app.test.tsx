@@ -180,6 +180,62 @@ describe("App", () => {
     unmount();
   });
 
+  it("shows the checklist live while the model works, and /todo after", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const waitTool = {
+      name: "wait",
+      description: "Waits.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      async execute() {
+        await gate;
+        return { output: "ok" };
+      },
+    };
+    const todos = [
+      { text: "Add subtract", status: "done" },
+      { text: "Write a test", status: "in_progress" },
+      { text: "Run the tests", status: "pending" },
+    ];
+    const client = new FakeModelClient([
+      {
+        toolCalls: [
+          { name: "update_todos", args: { todos } },
+          { name: "wait", args: {} },
+        ],
+      },
+      { text: "all set" },
+    ]);
+    const createSession = () =>
+      new Session({
+        client,
+        model: "gpt-6-luna",
+        instructions: "test",
+        cwd: tmpdir(),
+        tools: [...defaultTools, waitTool],
+      });
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("do three things");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("◐ Write a test"));
+    expect(lastFrame()).toContain("☐ Run the tests");
+    release();
+    await waitFor(() => frames.join("\n").includes("all set"));
+    stdin.write("/todo");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("☑ Add subtract"));
+    unmount();
+  });
+
   it("clears the screen with Ctrl+L but keeps the conversation", async () => {
     let made = 0;
     const client = new FakeModelClient([{ text: "first answer" }, { text: "second answer" }]);
@@ -368,6 +424,8 @@ describe("App", () => {
     expect(frames.join("\n")).toContain("Shortcuts");
 
     stdin.write("/");
+    await tick();
+    stdin.write("\u001B[B");
     await tick();
     stdin.write("\u001B[B");
     await tick();

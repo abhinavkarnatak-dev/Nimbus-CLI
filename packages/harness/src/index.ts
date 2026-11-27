@@ -95,6 +95,8 @@ export {
   type UndoResult,
 } from "./tools/changes.js";
 export { describeUndo, undoTool } from "./tools/undo.js";
+export { todoLines, todosFrom, todosTool, type Todo, type TodoStatus } from "./tools/todos.js";
+export { REPEAT_NOTE, SAME_ERROR_NOTE, VERIFY_REMINDER } from "./agent/checks.js";
 export { FileTracker } from "./tools/file-state.js";
 export { globTool } from "./tools/glob.js";
 export { grepTool } from "./tools/grep.js";
@@ -111,6 +113,7 @@ import { globTool } from "./tools/glob.js";
 import { grepTool } from "./tools/grep.js";
 import { readFileTool } from "./tools/read-file.js";
 import type { Tool } from "./tools/types.js";
+import { todosTool } from "./tools/todos.js";
 import { undoTool } from "./tools/undo.js";
 import { writeFileTool } from "./tools/write-file.js";
 
@@ -121,6 +124,7 @@ export const defaultTools: Tool[] = [
   editTool,
   writeFileTool,
   undoTool,
+  todosTool,
   bashTool,
   bashOutputTool,
   killProcessTool,

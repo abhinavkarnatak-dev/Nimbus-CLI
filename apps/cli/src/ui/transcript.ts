@@ -19,6 +19,10 @@ export type Item =
     }
   | { kind: "notice"; id: number; text: string; tone: "info" | "error" };
 
+export const LOOP_STOPPED =
+  'Stopped: the model kept repeating the same step. Send a message to guide it, or "continue" to let it try again.';
+export const CHECK_NOTICE = "Asked the model to check its changes before finishing.";
+
 export const RESTARTED_NOTICE = "Connection dropped mid-reply, starting the reply again.";
 
 let nextId = 1;
@@ -86,6 +90,8 @@ export function applyEvent(items: Item[], event: AgentEvent, now = Date.now()): 
           tone: "info",
         },
       ];
+    case "loop_stopped":
+      return [...items, { kind: "notice", id: newId(), text: LOOP_STOPPED, tone: "error" }];
     case "notice":
       return [...items, { kind: "notice", id: newId(), text: event.message, tone: "info" }];
     case "compacting":
