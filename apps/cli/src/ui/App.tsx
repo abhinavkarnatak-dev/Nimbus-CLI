@@ -177,7 +177,10 @@ export function App({
   }, [exit]);
 
   const runTurn = useCallback(
-    async (text: string, echo = true, switched = false): Promise<void> => {
+    async (
+      text: string,
+      { echo = true, retry: again = false, switched = false } = {},
+    ): Promise<void> => {
       const current = session.current;
       const abort = new AbortController();
       controller.current = abort;
@@ -185,7 +188,9 @@ export function App({
       if (echo) append({ kind: "user", id: newId(), text });
       working.current = [];
       let retry = false;
-      for await (const event of current.send(text, abort.signal)) {
+      // A retry continues the failed turn instead of sending the message again
+      const events = again ? current.retry(abort.signal) : current.send(text, abort.signal);
+      for await (const event of events) {
         const onKey = billing.state.route === "key";
         // Out of money on one side: switch to the other once and resend
         if (event.type === "error" && !switched) {
@@ -256,7 +261,7 @@ export function App({
       flush(true);
       controller.current = null;
       setRunningSince(null);
-      if (retry) await runTurn(text, false, true);
+      if (retry) await runTurn(text, { echo: false, retry: true, switched: true });
     },
     [append, flush, auth, billing, switchRoute],
   );
@@ -278,7 +283,7 @@ export function App({
         setLoggedIn(true);
         notice(`✓ Logged in as ${email}`);
         setLogin({ phase: "idle" });
-        if (pending) void runTurn(pending, false);
+        if (pending) void runTurn(pending, { echo: false, retry: session.current.canRetry });
       } catch (error) {
         setLogin({ phase: "idle" });
         notice((error as Error).message, abort.signal.aborted ? "info" : "error");

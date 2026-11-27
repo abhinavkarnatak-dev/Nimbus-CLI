@@ -427,7 +427,7 @@ describe("App", () => {
         billing={billing}
       />,
     );
-    return { ...view, billing };
+    return { ...view, billing, ownModel };
   }
 
   it("saves a pasted key without ever showing it", async () => {
@@ -466,6 +466,28 @@ describe("App", () => {
     expect(frame).toContain("switched to your OpenAI key");
     expect(frame.match(/› hello/g)).toHaveLength(1);
     expect(billing.state.route).toBe("key");
+    unmount();
+  });
+
+  it("continues the same turn after switching, without sending the message twice", async () => {
+    const { lastFrame, stdin, ownModel, unmount } = billingSetup({
+      nimbus: [
+        { toolCalls: [{ name: "read_file", args: { path: "a.txt" } }] },
+        { error: "Your Nimbus trial credit is used up ($0.50).", status: 402 },
+      ],
+      own: [{ text: "Finished on your key" }],
+      savedKey: KEY,
+    });
+    await tick();
+    stdin.write("hello");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Finished on your key"));
+    const input = ownModel.requests[0]!.input;
+    expect(input.filter((item) => "role" in item && item.role === "user")).toEqual([
+      { role: "user", content: "hello" },
+    ]);
+    expect(input.some((item) => item.type === "function_call_output")).toBe(true);
     unmount();
   });
 

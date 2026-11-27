@@ -1,4 +1,5 @@
 import {
+  ERROR_NOTE,
   historyFromTurns,
   INTERRUPTED_NOTE,
   isFunctionCall,
@@ -8,6 +9,8 @@ import {
 } from "@nimbus/harness";
 import type { SavedSession } from "../store/sqlite.js";
 import { newId, type Item } from "./transcript.js";
+
+const STOPPED_BY_ERROR = "This reply stopped because of an error.";
 
 // Message text from either our own items or the API's output items
 function textOf(item: HistoryItem): string | null {
@@ -40,7 +43,6 @@ export function resumeStateFrom(saved: SavedSession): ResumeState {
 export function transcriptFrom(saved: SavedSession): Item[] {
   const items: Item[] = [];
   for (const turn of saved.turns) {
-    if (turn.status === "failed") continue;
     const views = new Map(turn.views.map((view) => [view.callId, view]));
     for (const entry of turn.items) {
       if (isFunctionCall(entry)) {
@@ -65,6 +67,8 @@ export function transcriptFrom(saved: SavedSession): Item[] {
       const { role } = entry as { role: string };
       if (text === STOPPED_NOTE) {
         items.push({ kind: "notice", id: newId(), text: "Stopped by you.", tone: "info" });
+      } else if (text === ERROR_NOTE) {
+        items.push({ kind: "notice", id: newId(), text: STOPPED_BY_ERROR, tone: "error" });
       } else if (text === INTERRUPTED_NOTE) {
         items.push({ kind: "notice", id: newId(), text: "Nimbus closed here.", tone: "info" });
       } else if (role === "user") {
@@ -75,6 +79,10 @@ export function transcriptFrom(saved: SavedSession): Item[] {
     }
     if (turn.status === "running") {
       items.push({ kind: "notice", id: newId(), text: "Nimbus closed here.", tone: "info" });
+    }
+    const last = turn.items.at(-1) as { content?: unknown } | undefined;
+    if (turn.status === "failed" && last?.content !== ERROR_NOTE) {
+      items.push({ kind: "notice", id: newId(), text: STOPPED_BY_ERROR, tone: "error" });
     }
   }
   return items;

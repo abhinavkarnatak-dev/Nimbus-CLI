@@ -14,7 +14,13 @@ import type { ShellInfo } from "../tools/shell.js";
 import { truncateOutput } from "../tools/truncate.js";
 import type { SearchFn, Tool, ToolContext, ToolResult } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
-import { closeTurn, type ResumeState } from "./resume.js";
+import {
+  closeTurn,
+  ERROR_NOTE,
+  ERROR_TOOL_OUTPUT,
+  openCallOutputs,
+  type ResumeState,
+} from "./resume.js";
 import type { SessionStore, ToolView, TurnStatus } from "./store.js";
 
 export const DEFAULT_MAX_STEPS = 25;
@@ -38,6 +44,13 @@ export interface SessionOptions {
   store?: SessionStore;
   // Continue a saved session; id must be the saved one
   resume?: ResumeState;
+}
+
+interface TurnState {
+  turn: number;
+  items: HistoryItem[];
+  usage: Usage;
+  cost: number;
 }
 
 function addUsage(total: Usage, usage: Usage): void {
@@ -79,6 +92,9 @@ export class Session {
   #title = "";
   #storeError: string | null = null;
   #storeErrorShown = false;
+  #pending: TurnState | null = null;
+  // Outputs by call id, so a call never runs twice
+  readonly #outputs = new Map<string, string>();
 
   constructor(options: SessionOptions) {
     this.id = options.id ?? randomUUID();
@@ -97,6 +113,20 @@ export class Session {
       this.#title = options.resume.title;
       addUsage(this.#usage, options.resume.usage);
       this.#cost = options.resume.cost;
+      for (const item of options.resume.history) {
+        const {
+          type,
+          call_id: id,
+          output,
+        } = item as { type?: string; call_id?: unknown; output?: unknown };
+        if (
+          type === "function_call_output" &&
+          typeof id === "string" &&
+          typeof output === "string"
+        ) {
+          this.#outputs.set(id, output);
+        }
+      }
     }
   }
 
@@ -143,8 +173,15 @@ export class Session {
 
   // Encrypted reasoning only works with the account that made it
   forgetReasoning(): void {
-    const kept = this.#history.filter((item) => (item as { type?: string }).type !== "reasoning");
+    const keep = (item: HistoryItem) => (item as { type?: string }).type !== "reasoning";
+    const kept = this.#history.filter(keep);
     this.#history.splice(0, this.#history.length, ...kept);
+    if (this.#pending) this.#pending.items = this.#pending.items.filter(keep);
+  }
+
+  // A failed turn that retry() can pick up
+  get canRetry(): boolean {
+    return this.#pending !== null;
   }
 
   // Stop background processes we started
@@ -154,12 +191,44 @@ export class Session {
 
   // Run one user turn, looping over tools
   async *send(text: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
+    // A failed turn the user moved on from still happened
+    if (this.#pending) this.#keepFailedTurn();
     const turn = ++this.#turn;
     if (!this.#title) this.#title = text.trim().slice(0, 120);
-    const turnItems: HistoryItem[] = [{ role: "user", content: text }];
-    this.#saveItems(turn, turnItems);
-    const turnUsage = emptyUsage();
-    let turnCost = 0;
+    const state: TurnState = {
+      turn,
+      items: [{ role: "user", content: text }],
+      usage: emptyUsage(),
+      cost: 0,
+    };
+    this.#saveItems(turn, state.items);
+    yield* this.#run(state, signal);
+  }
+
+  // Continue the failed turn from its last finished step
+  async *retry(signal?: AbortSignal): AsyncGenerator<AgentEvent> {
+    const state = this.#pending;
+    if (!state) {
+      yield { type: "error", message: "There is no failed reply to continue." };
+      return;
+    }
+    this.#pending = null;
+    const open = openCallOutputs(state.items, ERROR_TOOL_OUTPUT);
+    state.items.push(...open);
+    this.#saveItems(state.turn, open);
+    yield* this.#run(state, signal);
+  }
+
+  #keepFailedTurn(): void {
+    const state = this.#pending!;
+    this.#pending = null;
+    const closing = closeTurn(state.items, ERROR_TOOL_OUTPUT, ERROR_NOTE);
+    this.#saveItems(state.turn, closing);
+    this.#history.push(...state.items, ...closing);
+  }
+
+  async *#run(state: TurnState, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
+    const { turn, items: turnItems } = state;
     const ctx: ToolContext = {
       cwd: this.cwd,
       signal: signal ?? new AbortController().signal,
@@ -178,7 +247,7 @@ export class Session {
       for (let step = 1; ; step++) {
         if (step > this.#maxSteps) {
           this.#history.push(...turnItems);
-          this.#endTurn(turn, "done", turnUsage, turnCost);
+          this.#endTurn(turn, "done", state.usage, state.cost);
           yield* this.#storeWarning();
           yield {
             type: "error",
@@ -204,9 +273,9 @@ export class Session {
           } else {
             output = event.output;
             const cost = costOf(this.model, event.usage);
-            addUsage(turnUsage, event.usage);
+            addUsage(state.usage, event.usage);
             addUsage(this.#usage, event.usage);
-            turnCost += cost;
+            state.cost += cost;
             this.#cost += cost;
           }
         }
@@ -225,12 +294,18 @@ export class Session {
             args: call.arguments,
           };
           const started = Date.now();
-          const result = await this.#runTool(call, ctx);
+          // A call id that already ran never runs twice
+          const earlier = this.#outputs.get(call.call_id);
+          const result: ToolResult =
+            earlier !== undefined
+              ? { output: earlier, summary: "Already ran, reused the earlier result" }
+              : await this.#runTool(call, ctx);
           const outputItem: HistoryItem = {
             type: "function_call_output",
             call_id: call.call_id,
-            output: truncateOutput(result.output),
+            output: earlier ?? truncateOutput(result.output),
           };
+          this.#outputs.set(call.call_id, outputItem.output as string);
           turnItems.push(outputItem);
           const view: ToolView = {
             callId: call.call_id,
@@ -249,9 +324,9 @@ export class Session {
       }
 
       this.#history.push(...turnItems);
-      this.#endTurn(turn, "done", turnUsage, turnCost);
+      this.#endTurn(turn, "done", state.usage, state.cost);
       yield* this.#storeWarning();
-      yield { type: "turn_complete", usage: turnUsage, cost: turnCost };
+      yield { type: "turn_complete", usage: state.usage, cost: state.cost };
     } catch (error) {
       if (signal?.aborted) {
         // Keep what already happened so the model knows about it
@@ -259,16 +334,19 @@ export class Session {
         turnItems.push(...closing);
         this.#saveItems(turn, closing);
         this.#history.push(...turnItems);
-        this.#endTurn(turn, "cancelled", turnUsage, turnCost);
+        this.#endTurn(turn, "cancelled", state.usage, state.cost);
         yield* this.#storeWarning();
         yield { type: "turn_cancelled" };
         return;
       }
-      this.#endTurn(turn, "failed", turnUsage, turnCost);
+      // Kept aside: retry() continues it, the next message keeps it in history
+      this.#pending = state;
+      this.#endTurn(turn, "failed", state.usage, state.cost);
       yield* this.#storeWarning();
       yield { type: "error", message: errorMessage(error), ...errorDetails(error) };
     }
   }
+
 
   async #runTool(call: FunctionCallItem, ctx: ToolContext): Promise<ToolResult> {
     const tool = this.#tools.get(call.name);

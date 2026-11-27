@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { STOPPED_NOTE, type HistoryItem } from "@nimbus/harness";
+import { ERROR_NOTE, STOPPED_NOTE, type HistoryItem } from "@nimbus/harness";
 import { describe, expect, it } from "vitest";
 import { openSessionStore, type SavedSession } from "../src/store/sqlite.js";
 import { resumeStateFrom, timeAgo, transcriptFrom } from "../src/ui/resume.js";
@@ -74,18 +74,20 @@ describe("resume", () => {
         summary: "Read 1 line",
       }),
       { kind: "assistant", id: 0, text: "Fixed." },
+      { kind: "user", id: 0, text: "never seen" },
+      { kind: "notice", id: 0, text: "This reply stopped because of an error.", tone: "error" },
       { kind: "user", id: 0, text: "run tests" },
       expect.objectContaining({ kind: "tool", name: "bash", status: "error" }),
       { kind: "notice", id: 0, text: "Stopped by you.", tone: "info" },
     ]);
   });
 
-  it("continues the turn count and adds up usage, without the failed turn's messages", () => {
+  it("continues the turn count, adds up usage and keeps the failed turn with a note", () => {
     const state = resumeStateFrom(saved);
     expect(state.turns).toBe(3);
     expect(state.title).toBe("fix it");
     expect(state.usage).toEqual({ inputTokens: 125, cachedTokens: 50, outputTokens: 12 });
-    expect(state.history.some((item) => JSON.stringify(item).includes("never seen"))).toBe(false);
+    expect(state.history).toContainEqual({ role: "user", content: ERROR_NOTE });
   });
 
   it("says how long ago in plain words", () => {
@@ -112,7 +114,7 @@ describe("resume", () => {
     add("new", "/p", "done");
     expect(store.list("/p").map((s) => [s.id, s.turns])).toEqual([
       ["new", 1],
-      ["failed-only", 0],
+      ["failed-only", 1],
       ["old", 1],
     ]);
     store.close();

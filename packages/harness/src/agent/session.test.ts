@@ -4,6 +4,7 @@ import { FakeModelClient } from "../model/fake.js";
 import { defineTool } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
 import { Session, STOPPED_NOTE, STOPPED_TOOL_OUTPUT } from "./session.js";
+import { ERROR_NOTE } from "./resume.js";
 import { MemorySessionStore, type SessionStore } from "./store.js";
 
 async function collect(events: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
@@ -282,6 +283,130 @@ describe("Session", () => {
         { type: "function_call_output", call_id: "call_1", output: STOPPED_TOOL_OUTPUT },
         { role: "user", content: STOPPED_NOTE },
       ]);
+    });
+  });
+
+  describe("failed turns", () => {
+    function counter() {
+      let runs = 0;
+      const tool = defineTool({
+        name: "count",
+        description: "Counts how often it runs.",
+        schema: z.strictObject({}),
+        async run() {
+          runs++;
+          return { output: `ran ${runs}`, summary: "counted" };
+        },
+      });
+      return { tool, runs: () => runs };
+    }
+
+    it("retry() continues from the last finished step without running tools again", async () => {
+      const { tool, runs } = counter();
+      const client = new FakeModelClient([
+        { toolCalls: [{ name: "count", args: {} }] },
+        { error: "Your Nimbus trial credit is used up ($0.50).", status: 402 },
+        { text: "Finished on your key" },
+      ]);
+      const store = new MemorySessionStore();
+      const session = new Session({
+        client,
+        model: "gpt-6-luna",
+        instructions: "test",
+        cwd: process.cwd(),
+        tools: [tool],
+        id: "s1",
+        store,
+      });
+      const first = await collect(session.send("do it"));
+      expect(first.at(-1)).toMatchObject({ type: "error", status: 402 });
+      expect(session.canRetry).toBe(true);
+      expect(session.history).toHaveLength(0);
+
+      const second = await collect(session.retry());
+      expect(second.at(-1)?.type).toBe("turn_complete");
+      expect(runs()).toBe(1);
+      expect(client.requests[2]!.input).toEqual([
+        { role: "user", content: "do it" },
+        expect.objectContaining({ type: "function_call", name: "count" }),
+        { type: "function_call_output", call_id: "call_1", output: "ran 1" },
+      ]);
+      expect(session.history.filter((item) => "role" in item && item.role === "user")).toHaveLength(
+        1,
+      );
+      expect(session.canRetry).toBe(false);
+      expect(store.sessions.get("s1")!.turns.get(1)!.status).toBe("done");
+    });
+
+    it("keeps a failed turn in history with a note when the user moves on", async () => {
+      const { tool } = counter();
+      const client = new FakeModelClient([
+        { toolCalls: [{ name: "count", args: {} }] },
+        { error: "network down" },
+        { text: "ok" },
+      ]);
+      const session = new Session({
+        client,
+        model: "gpt-6-luna",
+        instructions: "test",
+        cwd: process.cwd(),
+        tools: [tool],
+      });
+      await collect(session.send("first"));
+      await collect(session.send("second"));
+      expect(client.requests[2]!.input).toEqual([
+        { role: "user", content: "first" },
+        expect.objectContaining({ type: "function_call" }),
+        { type: "function_call_output", call_id: "call_1", output: "ran 1" },
+        { role: "user", content: ERROR_NOTE },
+        { role: "user", content: "second" },
+      ]);
+      expect(session.canRetry).toBe(false);
+    });
+
+    it("drops reasoning from a failed turn when switching accounts", async () => {
+      const client = new FakeModelClient([{ error: "x" }]);
+      const session = newSession(client);
+      await collect(session.send("hi"));
+      session.forgetReasoning();
+      expect(session.canRetry).toBe(true);
+    });
+
+    it("says so when there is nothing to retry", async () => {
+      const session = newSession(new FakeModelClient([]));
+      expect(await collect(session.retry())).toEqual([
+        { type: "error", message: "There is no failed reply to continue." },
+      ]);
+    });
+
+    it("never runs a call id twice, even after a resume", async () => {
+      const { tool, runs } = counter();
+      const session = new Session({
+        client: new FakeModelClient([{ toolCalls: [{ name: "count", args: {} }] }, { text: "ok" }]),
+        model: "gpt-6-luna",
+        instructions: "test",
+        cwd: process.cwd(),
+        tools: [tool],
+        resume: {
+          history: [
+            { role: "user", content: "before" },
+            { type: "function_call", call_id: "call_1", name: "count", arguments: "{}" },
+            { type: "function_call_output", call_id: "call_1", output: "ran earlier" },
+          ],
+          turns: 1,
+          title: "before",
+          usage: { inputTokens: 0, cachedTokens: 0, outputTokens: 0 },
+          cost: 0,
+        },
+      });
+      const events = await collect(session.send("again"));
+      expect(runs()).toBe(0);
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "tool_call_end",
+          summary: "Already ran, reused the earlier result",
+        }),
+      );
     });
   });
 

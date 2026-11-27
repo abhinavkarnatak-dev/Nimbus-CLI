@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { FakeModelClient } from "../model/fake.js";
 import type { HistoryItem } from "../model/types.js";
-import { historyFromTurns, INTERRUPTED_NOTE, INTERRUPTED_TOOL_OUTPUT } from "./resume.js";
+import {
+  ERROR_NOTE,
+  historyFromTurns,
+  INTERRUPTED_NOTE,
+  INTERRUPTED_TOOL_OUTPUT,
+} from "./resume.js";
 import { Session } from "./session.js";
 import { MemorySessionStore } from "./store.js";
 
@@ -13,7 +18,7 @@ const call: HistoryItem = {
 };
 
 describe("historyFromTurns", () => {
-  it("skips failed turns, drops reasoning and closes a turn cut off by a crash", () => {
+  it("keeps failed turns with a note, drops reasoning and closes a turn cut off by a crash", () => {
     const history = historyFromTurns([
       {
         status: "done",
@@ -23,12 +28,23 @@ describe("historyFromTurns", () => {
           { role: "assistant", content: "ok" },
         ],
       },
-      { status: "failed", items: [{ role: "user", content: "lost" }] },
+      { status: "failed", items: [{ role: "user", content: "out of credit" }] },
+      {
+        status: "failed",
+        items: [
+          { role: "user", content: "already closed" },
+          { role: "user", content: ERROR_NOTE },
+        ],
+      },
       { status: "running", items: [{ role: "user", content: "run it" }, call] },
     ]);
     expect(history).toEqual([
       { role: "user", content: "one" },
       { role: "assistant", content: "ok" },
+      { role: "user", content: "out of credit" },
+      { role: "user", content: ERROR_NOTE },
+      { role: "user", content: "already closed" },
+      { role: "user", content: ERROR_NOTE },
       { role: "user", content: "run it" },
       call,
       { type: "function_call_output", call_id: "c1", output: INTERRUPTED_TOOL_OUTPUT },

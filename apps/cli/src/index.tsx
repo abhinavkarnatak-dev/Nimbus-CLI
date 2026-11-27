@@ -166,8 +166,9 @@ const app = render(
   />,
   {
     exitOnCtrlC: false,
-    // Lets terminals that support it report Shift+Enter
-    kittyKeyboard: { mode: "auto" },
+    // Turned on without asking the terminal first: a late answer to that
+    // question used to land in the input box as "[?0u"
+    kittyKeyboard: { mode: "enabled" },
   },
 );
 

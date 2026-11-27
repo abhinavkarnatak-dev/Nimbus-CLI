@@ -13,6 +13,8 @@ export {
 export { STOPPED_NOTE, STOPPED_TOOL_OUTPUT } from "./agent/session.js";
 export {
   closeTurn,
+  ERROR_NOTE,
+  ERROR_TOOL_OUTPUT,
   historyFromTurns,
   INTERRUPTED_NOTE,
   INTERRUPTED_TOOL_OUTPUT,

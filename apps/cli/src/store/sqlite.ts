@@ -65,7 +65,7 @@ export interface SessionSummary {
   id: string;
   title: string;
   updatedAt: number;
-  // Turns that made it into the conversation
+  // Messages sent in this conversation
   turns: number;
 }
 
@@ -168,7 +168,7 @@ export function openSessionStore(path: string): SqliteSessionStore {
       const rows = db
         .prepare(
           `SELECT s.id, s.title, s.updated_at,
-             (SELECT count(*) FROM turns t WHERE t.session_id = s.id AND t.status != 'failed') AS turns
+             (SELECT count(*) FROM turns t WHERE t.session_id = s.id) AS turns
            FROM sessions s WHERE s.cwd = ? ORDER BY s.updated_at DESC LIMIT ?`,
         )
         .all(cwd, limit) as Record<string, string | number>[];
