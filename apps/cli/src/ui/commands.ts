@@ -11,6 +11,7 @@ export const COMMANDS: SlashCommand[] = [
   { name: "/context", description: "Show how full the conversation is and what fills it" },
   { name: "/compact", description: "Shrink the conversation, optionally with a focus" },
   { name: "/usage", description: "Show tokens and cost for this session" },
+  { name: "/permissions", description: "Choose when Nimbus asks before edits and commands" },
   { name: "/budget", description: "Set a spending limit for this session (/budget 0.50)" },
   { name: "/login", description: "Log in with Google, optionally with an invite code" },
   { name: "/logout", description: "Log out on this computer" },

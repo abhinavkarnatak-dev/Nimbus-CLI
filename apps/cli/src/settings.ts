@@ -4,8 +4,11 @@ import { dirname, join } from "node:path";
 
 export type Route = "nimbus" | "key";
 
+export type PermissionMode = "ask" | "edits" | "full";
+
 export interface Settings {
   use?: Route;
+  permissions?: PermissionMode;
 }
 
 export interface SettingsStore {

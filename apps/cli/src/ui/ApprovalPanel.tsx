@@ -1,0 +1,128 @@
+import { Box, Text } from "ink";
+import type { ApprovalPrompt } from "../permissions.js";
+import { theme } from "./theme.js";
+
+export interface ApprovalState {
+  prompt: ApprovalPrompt;
+  selected: number;
+}
+
+const MAX_LINES = 10;
+
+export function approvalOptions(
+  prompt: ApprovalPrompt,
+): { label: string; choice: "yes" | "always" | "no" }[] {
+  return [
+    { label: "Yes", choice: "yes" },
+    ...(prompt.remember
+      ? [
+          {
+            label: `Yes, and don't ask again for ${prompt.remember} this session`,
+            choice: "always" as const,
+          },
+        ]
+      : []),
+    { label: "No (esc)", choice: "no" },
+  ];
+}
+
+const str = (value: unknown) => (typeof value === "string" ? value : "");
+const lines = (text: string) => text.replace(/\r\n/g, "\n").split("\n");
+
+function clipLines(all: string[]): { shown: string[]; more: number } {
+  return { shown: all.slice(0, MAX_LINES), more: Math.max(0, all.length - MAX_LINES) };
+}
+
+// Title and the part of the action worth reading first
+function describe(prompt: ApprovalPrompt) {
+  const { tool, args } = prompt.request;
+  if (tool === "edit") {
+    const removed = clipLines(lines(str(args.old_string)));
+    const added = clipLines(lines(str(args.new_string)));
+    return {
+      title: `Edit ${str(args.path)}`,
+      body: (
+        <>
+          {removed.shown.map((line, i) => (
+            <Text key={`r${i}`} backgroundColor={theme.removedBg} color="white">
+              {`- ${line}`}
+            </Text>
+          ))}
+          {removed.more > 0 && <Text color={theme.muted}>{`  … ${removed.more} more lines`}</Text>}
+          {added.shown.map((line, i) => (
+            <Text key={`a${i}`} backgroundColor={theme.addedBg} color="white">
+              {`+ ${line}`}
+            </Text>
+          ))}
+          {added.more > 0 && <Text color={theme.muted}>{`  … ${added.more} more lines`}</Text>}
+        </>
+      ),
+    };
+  }
+  if (tool === "write_file") {
+    const all = lines(str(args.content));
+    const { shown, more } = clipLines(all);
+    return {
+      title: `Write ${str(args.path)} (${all.length} line${all.length === 1 ? "" : "s"})`,
+      body: (
+        <>
+          {shown.map((line, i) => (
+            <Text key={i} color={theme.muted}>
+              {line}
+            </Text>
+          ))}
+          {more > 0 && <Text color={theme.muted}>{`… ${more} more lines`}</Text>}
+        </>
+      ),
+    };
+  }
+  if (tool === "undo_changes") {
+    const paths = Array.isArray(args.paths) ? args.paths.join(", ") : "every changed file";
+    const replies = typeof args.replies === "number" ? args.replies : 1;
+    return {
+      title: "Undo file changes",
+      body: (
+        <Text color={theme.muted}>
+          {`${replies === 1 ? "Last reply" : `Last ${replies} replies`}: ${paths}`}
+        </Text>
+      ),
+    };
+  }
+  return {
+    title: args.background ? "Run a command in the background" : "Run a command",
+    body: <Text>{str(args.command)}</Text>,
+  };
+}
+
+// Asks before an edit or a command
+export function ApprovalPanel({ state }: { state: ApprovalState | null }) {
+  if (!state) return null;
+  const { title, body } = describe(state.prompt);
+  const options = approvalOptions(state.prompt);
+  return (
+    <Box
+      marginTop={1}
+      borderStyle="round"
+      borderColor={theme.accent}
+      paddingX={1}
+      flexDirection="column"
+    >
+      <Text>
+        <Text color={theme.accent}>◆ </Text>
+        <Text bold>{title}</Text>
+      </Text>
+      <Box flexDirection="column" paddingLeft={2} marginY={1}>
+        {body}
+      </Box>
+      {state.prompt.warning && <Text color={theme.warning}>{`⚠ ${state.prompt.warning}`}</Text>}
+      {options.map((option, index) => {
+        const active = index === state.selected;
+        return (
+          <Text key={option.choice} color={active ? theme.accent : "white"} bold={active}>
+            {`${active ? "› " : "  "}${index + 1}. ${option.label}`}
+          </Text>
+        );
+      })}
+    </Box>
+  );
+}

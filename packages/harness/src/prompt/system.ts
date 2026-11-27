@@ -115,6 +115,24 @@ Answering:
 - Quote only the few lines that matter, not whole files.${editing}${commands}${web}`;
 }
 
+// Secrets, git and permission rules
+function safetySection(tools: ReadonlySet<string>): string {
+  if (!tools.has("bash") && !tools.has("edit") && !tools.has("write_file")) return "";
+  return `
+
+Safety:
+- Never read secret files such as .env, private keys or credential files, and never
+  print, log or repeat secrets you come across in other output. If you need a value,
+  ask the user for it.
+- Never commit, push, pull, merge, rebase, create or delete branches, or change git
+  history unless the user asked for that in this conversation. Before a commit, show the
+  user what will be committed.
+- Some actions need the user's permission first. If the user declines one, do not try
+  to do the same thing another way.
+- Do not install, update or remove packages, or change settings outside the working
+  folder, unless the task needs it. Say why before you do it.`;
+}
+
 export function buildSystemPrompt(env: Environment, toolNames: readonly string[] = []): string {
   return `You are Nimbus, an AI coding agent that runs in the user's terminal.
 
@@ -127,5 +145,5 @@ Environment:
 Style:
 - Be concise and direct. Prefer short answers unless the user asks for detail.
 - Use plain hyphens (-). Never use en dashes or em dashes.
-- Use Markdown only when it helps (code blocks, short lists).${toolsSection(new Set(toolNames))}`;
+- Use Markdown only when it helps (code blocks, short lists).${toolsSection(new Set(toolNames))}${safetySection(new Set(toolNames))}`;
 }

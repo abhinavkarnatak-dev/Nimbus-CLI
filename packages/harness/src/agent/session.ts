@@ -27,6 +27,7 @@ import {
   replyText,
   summaryItem,
 } from "./compact.js";
+import { DECLINED_NOTE, SKIPPED_NOTE, type ApproveFn } from "./approval.js";
 import { TurnChecks, VERIFY_REMINDER } from "./checks.js";
 import { contextParts, estimateItems, estimateTokens, type ContextUsage } from "./context.js";
 import { todosFrom, type Todo } from "../tools/todos.js";
@@ -82,6 +83,8 @@ export interface SessionOptions {
   outputDir?: string;
   // Spending limit in USD; the turn pauses before going over
   budget?: number | null;
+  // Asked before tools that change files or run commands
+  approve?: ApproveFn;
   // Retries for a failed model call, never for tools
   maxRetries?: number;
   retryDelay?: (error: unknown, attempt: number) => number;
@@ -139,6 +142,7 @@ export class Session {
   readonly #store: SessionStore | undefined;
   readonly #outputDir: string | undefined;
   #budget: number | null;
+  readonly #approve: ApproveFn | undefined;
   #todos: Todo[] = [];
   #cost = 0;
   #turn = 0;
@@ -168,6 +172,7 @@ export class Session {
     this.#store = options.store;
     this.#outputDir = options.outputDir;
     this.#budget = options.budget ?? null;
+    this.#approve = options.approve;
     this.#todos = todosFrom(options.resume?.history ?? []);
     this.#changes = new ChangeLog(
       (change) => this.#save((store) => store.saveFileChange(this.id, change)),
@@ -451,6 +456,7 @@ export class Session {
         }
 
         let looping = false;
+        let declined = false;
 
         for (const call of calls) {
           yield {
@@ -463,12 +469,28 @@ export class Session {
           if (call.name === "bash") this.#changes.noteCommand(turn);
           // A call id that already ran never runs twice
           const earlier = this.#outputs.get(call.call_id);
-          const result: ToolResult =
+          // After a "no", the rest of the step does not run
+          const status =
             earlier !== undefined
-              ? { output: earlier, summary: "Already ran, reused the earlier result" }
-              : await this.#runTool(call, ctx);
-          let shown = earlier ?? (await this.#shorten(call.call_id, result.output));
-          if (earlier === undefined) {
+              ? "reused"
+              : declined
+                ? "skipped"
+                : (await this.#approved(call, ctx))
+                  ? "run"
+                  : "declined";
+          if (status === "declined") declined = true;
+          const result: ToolResult =
+            status === "reused"
+              ? { output: earlier!, summary: "Already ran, reused the earlier result" }
+              : status === "declined"
+                ? { output: DECLINED_NOTE, summary: "Declined by you", isError: true }
+                : status === "skipped"
+                  ? { output: SKIPPED_NOTE, summary: "Skipped", isError: true }
+                  : await this.#runTool(call, ctx);
+          const stopped = status === "declined" || status === "skipped";
+          let shown =
+            earlier ?? (stopped ? result.output : await this.#shorten(call.call_id, result.output));
+          if (earlier === undefined && !stopped) {
             const check = state.checks.record(
               call.name,
               call.arguments,
@@ -499,6 +521,15 @@ export class Session {
           this.#save((store) => store.saveToolView(this.id, turn, view));
           const { callId, ...visible } = view;
           yield { type: "tool_call_end", id: callId, ...visible };
+        }
+
+        // The user said no: stop and wait for their next message
+        if (declined) {
+          this.#history.push(...turnItems);
+          this.#endTurn(turn, "done", state.usage, state.cost);
+          yield* this.#storeWarning();
+          yield { type: "declined" };
+          return;
         }
 
         // Same step over and over: stop and let the user steer
@@ -624,6 +655,24 @@ export class Session {
       count++;
     }
     return { count, delta };
+  }
+
+  // Ask the user before a tool that changes something
+  async #approved(call: FunctionCallItem, ctx: ToolContext): Promise<boolean> {
+    const tool = this.#tools.get(call.name);
+    if (!tool?.needsApproval || !this.#approve) return true;
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(call.arguments) as Record<string, unknown>;
+    } catch {
+      // The tool itself reports bad arguments
+    }
+    const decision = await this.#approve(
+      { tool: call.name, args, callId: call.call_id },
+      ctx.signal,
+    );
+    ctx.signal.throwIfAborted();
+    return decision === "allow";
   }
 
   #toolSpecs(): ToolSpec[] {

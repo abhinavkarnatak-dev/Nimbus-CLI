@@ -82,6 +82,8 @@ interface Props {
   model: string;
   hint: string;
   context?: ContextUsage;
+  // Permission mode when it is not the default
+  badge?: string | null;
 }
 
 // Gray while there is room, then yellow and red
@@ -96,12 +98,18 @@ export function contextPercent(context: ContextUsage): number {
   return context.tokens > 0 ? Math.max(percent, 1) : 0;
 }
 
-export function StatusBar({ model, hint, context }: Props) {
+export function StatusBar({ model, hint, context, badge }: Props) {
   const percent = context ? contextPercent(context) : null;
   return (
     <Box paddingX={2} justifyContent="space-between">
       <Text color={theme.muted}>{hint}</Text>
       <Text color={theme.muted}>
+        {badge && (
+          <>
+            <Text color={badge === "don't ask" ? theme.warning : theme.accent}>{badge}</Text>
+            {" · "}
+          </>
+        )}
         {model}
         {percent !== null && (
           <>

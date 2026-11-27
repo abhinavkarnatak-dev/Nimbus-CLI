@@ -2,6 +2,7 @@ import { realpath } from "node:fs/promises";
 import picomatch from "picomatch";
 import { z } from "zod";
 import { resolveReadable, toDisplayPath } from "./paths.js";
+import { assertNotSecret, isSecretPath } from "./secrets.js";
 import { ALWAYS_EXCLUDED, BASE_RIPGREP_ARGS, runRipgrep } from "./ripgrep.js";
 import { defineTool } from "./types.js";
 
@@ -83,6 +84,7 @@ export const grepTool = defineTool({
     const found = path ? await resolveReadable(ctx.cwd, path, ctx.outputDir) : null;
     const root = found?.root ?? (await realpath(ctx.cwd));
     const target = found ? toDisplayPath(root, found.path) : ".";
+    if (found) assertNotSecret(found.path, path!);
 
     const common = [...BASE_RIPGREP_ARGS, ...ALWAYS_EXCLUDED];
     if (case_insensitive) common.push("--ignore-case");
@@ -94,7 +96,8 @@ export const grepTool = defineTool({
 
     // Filter ourselves: ripgrep --glob would override .gitignore
     const matches = glob ? picomatch(glob, { dot: true, basename: true }) : undefined;
-    const accept = (file: string) => (matches ? matches(file) : true);
+    // Secret files never show up in results
+    const accept = (file: string) => !isSecretPath(file) && (matches ? matches(file) : true);
     const pathOf = (line: string) => (output_mode === "files" ? line : (line.split("\0")[0] ?? ""));
 
     const run = await runRipgrep(

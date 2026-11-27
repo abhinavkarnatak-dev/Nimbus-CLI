@@ -8,6 +8,7 @@ import { SwitchableModelClient } from "../src/auth/client.js";
 import { AuthController } from "../src/auth/controller.js";
 import { memoryStore } from "../src/auth/credentials.js";
 import { memorySecret } from "../src/auth/secrets.js";
+import { Permissions } from "../src/permissions.js";
 import { BillingController } from "../src/billing/controller.js";
 import { RoutingModelClient } from "../src/billing/router.js";
 import { memorySettings } from "../src/settings.js";
@@ -233,6 +234,91 @@ describe("App", () => {
     await tick();
     stdin.write("\r");
     await waitFor(() => (lastFrame() ?? "").includes("☑ Add subtract"));
+    unmount();
+  });
+
+  it("asks before an edit, runs it on yes, and stops on esc", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nimbus-approve-"));
+    await writeFile(join(cwd, "a.txt"), "one\n");
+    const read = { name: "read_file", args: { path: "a.txt", offset: null, limit: null } };
+    const change = (to: string) => ({
+      name: "edit",
+      args: { path: "a.txt", old_string: "one", new_string: to, replace_all: null },
+    });
+    const client = new FakeModelClient([
+      { toolCalls: [read] },
+      { toolCalls: [change("two")] },
+      { text: "changed it" },
+      { toolCalls: [read] },
+      { toolCalls: [{ ...change("three"), args: { ...change("three").args, old_string: "two" } }] },
+      { text: "never" },
+    ]);
+    const permissions = new Permissions(memorySettings({}));
+    const createSession = () =>
+      new Session({
+        client,
+        model: "gpt-6-luna",
+        instructions: "test",
+        cwd,
+        tools: defaultTools,
+        approve: permissions.approve,
+      });
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd }}
+        permissions={permissions}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("change a");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Edit a.txt"));
+    expect(lastFrame()).toContain("2. Yes, and don't ask again for file edits this session");
+    expect(lastFrame()).toContain("Waiting for your answer");
+    stdin.write("1");
+    await waitFor(() => frames.join("\n").includes("changed it"));
+
+    stdin.write("change it again");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Edit a.txt"));
+    stdin.write("\u001B");
+    await waitFor(() => frames.join("\n").includes("Stopped. Tell Nimbus what to do instead."));
+    expect(frames.join("\n")).toContain("Declined by you");
+    unmount();
+  });
+
+  it("switches the permission mode with /permissions", async () => {
+    const permissions = new Permissions(memorySettings({}));
+    const createSession = () =>
+      new Session({
+        client: new FakeModelClient([]),
+        model: "gpt-6-luna",
+        instructions: "t",
+        cwd: tmpdir(),
+      });
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        permissions={permissions}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("/permissions");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("When should Nimbus ask before acting?"));
+    stdin.write("\u001B[B");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Permissions: Edit files without asking"));
+    expect(lastFrame()).toContain("auto edits · gpt-6-luna");
+    expect(permissions.mode).toBe("edits");
     unmount();
   });
 

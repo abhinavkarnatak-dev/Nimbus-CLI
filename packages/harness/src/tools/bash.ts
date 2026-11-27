@@ -73,6 +73,7 @@ async function runForeground(
 
 export const bashTool = defineTool({
   name: "bash",
+  needsApproval: true,
   description: `Run a command in the user's shell, starting in the working directory.
 Returns the combined output and the exit code.
 - command: the command to run.

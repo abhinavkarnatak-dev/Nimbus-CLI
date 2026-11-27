@@ -49,12 +49,15 @@ export interface ToolSpec {
 }
 
 export interface Tool extends ToolSpec {
+  needsApproval?: boolean;
   execute(rawArgs: string, ctx: ToolContext): Promise<ToolResult>;
 }
 
 export interface ToolDefinition<Input> {
   name: string;
   description: string;
+  // Changes files or runs commands, so the user may be asked first
+  needsApproval?: boolean;
   schema: z.ZodType<Input>;
   run(input: Input, ctx: ToolContext): Promise<ToolResult>;
 }
@@ -71,6 +74,7 @@ export function defineTool<Input>(definition: ToolDefinition<Input>): Tool {
   return {
     name: definition.name,
     description: definition.description,
+    needsApproval: definition.needsApproval,
     parameters,
     async execute(rawArgs, ctx) {
       let json: unknown;

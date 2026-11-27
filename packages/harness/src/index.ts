@@ -97,6 +97,14 @@ export {
 export { describeUndo, undoTool } from "./tools/undo.js";
 export { todoLines, todosFrom, todosTool, type Todo, type TodoStatus } from "./tools/todos.js";
 export { REPEAT_NOTE, SAME_ERROR_NOTE, VERIFY_REMINDER } from "./agent/checks.js";
+export {
+  DECLINED_NOTE,
+  SKIPPED_NOTE,
+  type ApprovalDecision,
+  type ApprovalRequest,
+  type ApproveFn,
+} from "./agent/approval.js";
+export { alwaysAskReason, isSecretPath, mentionsSecret, secretRefusal } from "./tools/secrets.js";
 export { FileTracker } from "./tools/file-state.js";
 export { globTool } from "./tools/glob.js";
 export { grepTool } from "./tools/grep.js";

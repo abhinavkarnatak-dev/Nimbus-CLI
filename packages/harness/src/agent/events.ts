@@ -19,6 +19,8 @@ export type AgentEvent =
   | { type: "notice"; message: string }
   // The model kept repeating a step, so the turn was ended
   | { type: "loop_stopped" }
+  // The user said no to an action, so the turn ended
+  | { type: "declined" }
   // The conversation is being shrunk, automatically or by /compact
   | { type: "compacting"; auto: boolean }
   | { type: "compacted"; before: number; after: number; summarized: boolean }

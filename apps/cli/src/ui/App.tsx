@@ -23,6 +23,9 @@ import { CommandMenu, StatusBar, WorkingLine, type RetryInfo } from "./StatusBar
 import type { SavedSession, SessionHistory } from "../store/sqlite.js";
 import { BudgetPanel, type BudgetPause } from "./BudgetPanel.js";
 import { TodoPanel } from "./TodoPanel.js";
+import { ApprovalPanel, approvalOptions, type ApprovalState } from "./ApprovalPanel.js";
+import { PermissionsPanel, type ModePicker } from "./PermissionsPanel.js";
+import { MODE_BADGE, MODES, type ApprovalChoice, type Permissions } from "../permissions.js";
 import { ResumePanel, type ResumePicker } from "./ResumePanel.js";
 import { timeAgo, transcriptFrom } from "./resume.js";
 import { applyEvent, newId, settle, type Item } from "./transcript.js";
@@ -40,6 +43,8 @@ interface Props {
   inviteCode?: string;
   // Picks Nimbus credit or the user's own key
   billing: BillingController;
+  // Decides what asks first; the UI answers its questions
+  permissions?: Permissions;
   // Saved conversations; missing when the store could not open
   sessions?: SessionHistory;
   // --continue passes a session, --resume opens the picker
@@ -132,12 +137,35 @@ export function App({
   billing,
   sessions,
   resumeOnStart,
+  permissions,
 }: Props) {
   const { exit } = useApp();
   const initial = typeof resumeOnStart === "object" ? resumeOnStart : undefined;
   const session = useRef<Session>(null as unknown as Session);
   if (!session.current) session.current = createSession(initial);
   const [contextUsage, setContextUsage] = useState(() => session.current.context());
+  const [approval, setApproval] = useState<ApprovalState | null>(null);
+  const answer = useRef<((choice: ApprovalChoice) => void) | null>(null);
+  const [modePicker, setModePicker] = useState<ModePicker | null>(null);
+  const [mode, setMode] = useState(() => permissions?.mode ?? "ask");
+
+  // The session waits here until the user picks an answer
+  useEffect(() => {
+    if (!permissions) return;
+    permissions.prompt = (prompt, signal) =>
+      new Promise<ApprovalChoice>((resolve) => {
+        answer.current = (choice) => {
+          answer.current = null;
+          setApproval(null);
+          resolve(choice);
+        };
+        signal.addEventListener("abort", () => answer.current?.("no"), { once: true });
+        setApproval({ prompt, selected: 0 });
+      });
+    return () => {
+      permissions.prompt = null;
+    };
+  }, [permissions]);
   const [todos, setTodos] = useState<readonly Todo[]>(() => session.current.todos);
   // Context size and checklist both follow the session
   const refreshContext = useCallback(() => {
@@ -430,6 +458,15 @@ export function App({
         case "/help":
           append({ kind: "assistant", id: newId(), text: HELP_TEXT });
           return;
+        case "/permissions": {
+          if (!permissions) return;
+          const current = permissions.mode;
+          setModePicker({
+            current,
+            selected: MODES.findIndex((option) => option.mode === current),
+          });
+          return;
+        }
         case "/todo": {
           const list = session.current.todos;
           notice(
@@ -609,6 +646,7 @@ export function App({
       info.model,
       notice,
       openPicker,
+      permissions,
       quit,
       refreshContext,
       runCompact,
@@ -727,6 +765,40 @@ export function App({
   useInput((input, key) => {
     if (key.ctrl && input === "l") {
       clearScreen();
+      return;
+    }
+    if (approval) {
+      const options = approvalOptions(approval.prompt);
+      const digit = Number(input);
+      if (key.upArrow || key.downArrow) {
+        const step = key.upArrow ? -1 : 1;
+        const count = options.length;
+        setApproval({ ...approval, selected: (approval.selected + step + count) % count });
+      } else if (key.return) {
+        answer.current?.(options[approval.selected]!.choice);
+      } else if (digit >= 1 && digit <= options.length) {
+        answer.current?.(options[digit - 1]!.choice);
+      } else if (key.escape) {
+        answer.current?.("no");
+      }
+      return;
+    }
+    if (modePicker) {
+      if (key.upArrow || key.downArrow) {
+        const step = key.upArrow ? -1 : 1;
+        setModePicker({
+          ...modePicker,
+          selected: (modePicker.selected + step + MODES.length) % MODES.length,
+        });
+      } else if (key.return) {
+        const chosen = MODES[modePicker.selected]!;
+        setModePicker(null);
+        permissions?.setMode(chosen.mode);
+        setMode(chosen.mode);
+        notice(`Permissions: ${chosen.label}.`);
+      } else if (key.escape) {
+        setModePicker(null);
+      }
       return;
     }
     if (budgetPause) {
@@ -849,13 +921,21 @@ export function App({
           <WorkingLine
             since={runningSince}
             retry={retryWait}
-            label={compacting ? "Compacting conversation…" : undefined}
+            label={
+              approval
+                ? "Waiting for your answer…"
+                : compacting
+                  ? "Compacting conversation…"
+                  : undefined
+            }
           />
         )}
         <LoginPanel login={login} />
         <BillingPanel panel={panel} />
         <ResumePanel picker={picker} />
         <BudgetPanel pause={budgetPause} />
+        <ApprovalPanel state={approval} />
+        <PermissionsPanel picker={modePicker} />
         <Box marginTop={1} flexDirection="column">
           <PromptInput
             draft={draft}
@@ -868,12 +948,17 @@ export function App({
             onSelect={setMenuIndex}
             onBrowsingChange={setBrowsingHistory}
             mask={panel.kind === "key"}
-            active={panel.kind !== "use" && !picker && !budgetPause}
+            active={panel.kind !== "use" && !picker && !budgetPause && !approval && !modePicker}
           />
           {menu.length > 0 ? (
             <CommandMenu commands={menu} selected={selected} />
           ) : (
-            <StatusBar model={info.model} hint={hint} context={contextUsage} />
+            <StatusBar
+              model={info.model}
+              hint={hint}
+              context={contextUsage}
+              badge={MODE_BADGE[mode]}
+            />
           )}
         </Box>
       </Box>

@@ -2,6 +2,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { resolveForWrite, toDisplayPath } from "./paths.js";
+import { assertNotSecret } from "./secrets.js";
 import { decodeText, describeChange, encodeText, isBinary, withEol } from "./text.js";
 import { defineTool } from "./types.js";
 
@@ -22,6 +23,7 @@ function lineCount(text: string): number {
 
 export const writeFileTool = defineTool({
   name: "write_file",
+  needsApproval: true,
   description: `Create a new file, or replace an existing file completely. Creates missing
 folders. To replace an existing file you must read it first in this session.
 Prefer edit for small changes to existing files.
@@ -32,6 +34,7 @@ Prefer edit for small changes to existing files.
   async run({ path, content }, ctx) {
     const target = await resolveForWrite(ctx.cwd, path);
     const display = toDisplayPath(target.root, target.path);
+    assertNotSecret(target.path, display);
 
     if (!target.exists) {
       await mkdir(dirname(target.path), { recursive: true });

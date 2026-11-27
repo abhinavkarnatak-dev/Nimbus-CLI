@@ -1,6 +1,7 @@
 import { readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import { resolveInside, toDisplayPath } from "./paths.js";
+import { assertNotSecret } from "./secrets.js";
 import { decodeText, describeChange, encodeText, isBinary, withEol } from "./text.js";
 import { defineTool } from "./types.js";
 
@@ -41,6 +42,7 @@ function snippet(text: string, eol: string, startIndex: number, newText: string)
 
 export const editTool = defineTool({
   name: "edit",
+  needsApproval: true,
   description: `Replace exact text in a file. old_string must appear exactly once in the file,
 or set replace_all to true to replace every occurrence. Matching is exact:
 whitespace, indentation and line breaks must be the same as in the file.
@@ -63,6 +65,7 @@ The file must have been read in this session and not changed since.
 
     const file = await resolveInside(ctx.cwd, path);
     const display = toDisplayPath(await realpath(ctx.cwd), file);
+    assertNotSecret(file, display);
     if ((await stat(file)).isDirectory()) throw new Error(`${path} is a directory, not a file`);
     await ctx.files.assertFresh(file, display);
 

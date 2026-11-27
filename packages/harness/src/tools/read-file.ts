@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { z } from "zod";
 import { isBinary } from "./text.js";
 import { resolveReadable } from "./paths.js";
+import { assertNotSecret } from "./secrets.js";
 import { MAX_TOOL_OUTPUT } from "./truncate.js";
 import { defineTool } from "./types.js";
 
@@ -46,6 +47,7 @@ Fails for binary files and for paths outside the working directory.`,
     if (!Number.isInteger(count) || count < 1) throw new Error("limit must be a whole number >= 1");
 
     const { path: file } = await resolveReadable(ctx.cwd, path, ctx.outputDir);
+    assertNotSecret(file, path);
     const info = await stat(file);
     if (info.isDirectory()) throw new Error(`${path} is a directory, not a file`);
     if (info.size > MAX_FILE_BYTES)

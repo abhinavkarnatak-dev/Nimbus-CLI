@@ -24,6 +24,7 @@ import { fileSettings } from "./settings.js";
 import { parseArgs } from "./args.js";
 import { resolveSetup, routeLabel } from "./connection.js";
 import { serverSearch } from "./search.js";
+import { Permissions } from "./permissions.js";
 import { cleanOutputs } from "./store/outputs.js";
 import { openSessionStore, type SavedSession, type SqliteSessionStore } from "./store/sqlite.js";
 import { resumeStateFrom } from "./ui/resume.js";
@@ -129,8 +130,12 @@ try {
   console.error(`Sessions will not be saved: ${(error as Error).message}`);
 }
 
-const createSession = (saved?: SavedSession) =>
-  new Session({
+const permissions = new Permissions(fileSettings());
+
+// Every new or resumed session starts with no "don't ask again" rules
+const createSession = (saved?: SavedSession) => {
+  permissions.resetSession();
+  return new Session({
     client,
     model: MODEL,
     instructions,
@@ -140,9 +145,11 @@ const createSession = (saved?: SavedSession) =>
     search,
     store: sessionStore,
     outputDir,
+    approve: permissions.approve,
     id: saved?.info.id,
     resume: saved ? resumeStateFrom(saved) : undefined,
   });
+};
 
 // --continue opens the newest conversation in this folder
 let resumeOnStart: SavedSession | "pick" | undefined;
@@ -170,6 +177,7 @@ const app = render(
     inviteCode={inviteCode}
     sessions={sessionStore}
     resumeOnStart={resumeOnStart}
+    permissions={permissions}
   />,
   {
     exitOnCtrlC: false,

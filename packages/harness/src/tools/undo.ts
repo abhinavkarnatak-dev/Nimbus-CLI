@@ -57,6 +57,7 @@ function summaryOf(result: UndoResult): string {
 
 export const undoTool = defineTool({
   name: "undo_changes",
+  needsApproval: true,
   description: `Undo file changes you made with edit and write_file in earlier replies.
 Use it only when the user asks to undo, revert or bring back changes. Never use it on
 your own to fix a mistake; fix that with edit instead.

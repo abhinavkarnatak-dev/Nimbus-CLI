@@ -21,6 +21,7 @@ export type Item =
 
 export const LOOP_STOPPED =
   'Stopped: the model kept repeating the same step. Send a message to guide it, or "continue" to let it try again.';
+export const DECLINED_NOTICE = "Stopped. Tell Nimbus what to do instead.";
 export const CHECK_NOTICE = "Asked the model to check its changes before finishing.";
 
 export const RESTARTED_NOTICE = "Connection dropped mid-reply, starting the reply again.";
@@ -90,6 +91,8 @@ export function applyEvent(items: Item[], event: AgentEvent, now = Date.now()): 
           tone: "info",
         },
       ];
+    case "declined":
+      return [...items, { kind: "notice", id: newId(), text: DECLINED_NOTICE, tone: "info" }];
     case "loop_stopped":
       return [...items, { kind: "notice", id: newId(), text: LOOP_STOPPED, tone: "error" }];
     case "notice":
