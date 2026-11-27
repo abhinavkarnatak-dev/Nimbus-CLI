@@ -1,5 +1,7 @@
+import { Box } from "ink";
 import { render } from "ink-testing-library";
 import { describe, expect, it } from "vitest";
+import { ItemView } from "../src/ui/ItemView.js";
 import { ToolRow } from "../src/ui/ToolRow.js";
 
 describe("ToolRow", () => {
@@ -69,5 +71,27 @@ describe("ToolRow", () => {
     expect(frame).toContain("pass 3");
     expect(frame).toContain("fail 0");
     expect(frame).not.toContain("Exit code");
+  });
+
+  it("does not add a resize listener per row, so a resumed chat stays quiet", () => {
+    const rows = Array.from({ length: 15 }, (_, id) => ({
+      kind: "tool" as const,
+      id,
+      callId: `c${id}`,
+      name: "read_file",
+      args: '{"path":"a.ts"}',
+      status: "done" as const,
+      startedAt: 0,
+      summary: "3 lines",
+    }));
+    const { stdout } = render(
+      <Box flexDirection="column">
+        {rows.map((item) => (
+          <ItemView key={item.id} item={item} />
+        ))}
+        <ItemView item={{ kind: "assistant", id: 99, text: "Done." }} />
+      </Box>,
+    );
+    expect(stdout.listenerCount("resize")).toBeLessThanOrEqual(1);
   });
 });

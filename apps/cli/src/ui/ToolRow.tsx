@@ -1,4 +1,5 @@
-import { Box, Text, useWindowSize } from "ink";
+import { Box, Text } from "ink";
+import { useWidth } from "./width.js";
 import Spinner from "ink-spinner";
 import { useEffect, useState } from "react";
 import { describeResult, formatDuration, parseDiff, toolLabel } from "./format.js";
@@ -67,7 +68,7 @@ function resultLines(item: ToolItem): { headline: string; extra?: string } {
 }
 
 export function ToolRow({ item }: { item: ToolItem }) {
-  const { columns } = useWindowSize();
+  const columns = useWidth();
   const { verb, target } = toolLabel(item.name, item.args);
   const running = item.status === "running";
   const failed = item.status === "error";

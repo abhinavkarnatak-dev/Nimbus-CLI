@@ -1,3 +1,4 @@
+import type { FileChange } from "../tools/changes.js";
 import { isFunctionCall, type HistoryItem, type Usage } from "../model/types.js";
 import type { TurnStatus } from "./store.js";
 
@@ -17,6 +18,10 @@ export interface ResumeState {
   title: string;
   usage: Usage;
   cost: number;
+  // Saved file copies, so undo_changes works after a resume
+  fileChanges?: FileChange[];
+  // Turns that ran bash, for the undo note
+  commandTurns?: number[];
 }
 
 export interface SavedTurnItems {

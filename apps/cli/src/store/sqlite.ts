@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
+  FileChange,
   HistoryItem,
   SessionInfo,
   SessionStore,
@@ -43,6 +44,20 @@ const MIGRATIONS = [
      FOREIGN KEY (session_id, turn) REFERENCES turns (session_id, turn) ON DELETE CASCADE
    );
    CREATE INDEX entries_by_turn ON entries (session_id, turn, id);`,
+  // Copies of files Nimbus changed, for undo_changes
+  `CREATE TABLE file_changes (
+     session_id TEXT NOT NULL,
+     turn INTEGER NOT NULL,
+     path TEXT NOT NULL,
+     display TEXT NOT NULL,
+     turn_title TEXT NOT NULL,
+     before BLOB,
+     after BLOB,
+     too_big INTEGER NOT NULL DEFAULT 0,
+     updated_at INTEGER NOT NULL,
+     PRIMARY KEY (session_id, turn, path),
+     FOREIGN KEY (session_id, turn) REFERENCES turns (session_id, turn) ON DELETE CASCADE
+   );`,
 ];
 
 export interface SavedTurn {
@@ -59,6 +74,7 @@ export interface SavedSession {
   createdAt: number;
   updatedAt: number;
   turns: SavedTurn[];
+  fileChanges: FileChange[];
 }
 
 export interface SessionSummary {
@@ -121,6 +137,14 @@ export function openSessionStore(path: string): SqliteSessionStore {
        cost = ?, ended_at = ? WHERE session_id = ? AND turn = ?`,
   );
   const touch = db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?");
+  const upsertChange = db.prepare(
+    `INSERT INTO file_changes
+       (session_id, turn, path, display, turn_title, before, after, too_big, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (session_id, turn, path) DO UPDATE SET
+       after = excluded.after, too_big = excluded.too_big, updated_at = excluded.updated_at,
+       before = CASE WHEN excluded.too_big = 1 THEN NULL ELSE file_changes.before END`,
+  );
 
   const inTransaction = (work: () => void) => {
     db.exec("BEGIN");
@@ -164,6 +188,20 @@ export function openSessionStore(path: string): SqliteSessionStore {
       });
     },
 
+    saveFileChange(sessionId: string, change: FileChange) {
+      upsertChange.run(
+        sessionId,
+        change.turn,
+        change.path,
+        change.display,
+        change.turnTitle,
+        change.before,
+        change.after,
+        change.tooBig ? 1 : 0,
+        Date.now(),
+      );
+    },
+
     list(cwd: string, limit = 20): SessionSummary[] {
       const rows = db
         .prepare(
@@ -190,6 +228,10 @@ export function openSessionStore(path: string): SqliteSessionStore {
       const entries = db
         .prepare("SELECT turn, kind, data FROM entries WHERE session_id = ? ORDER BY id")
         .all(sessionId) as { turn: number; kind: string; data: string }[];
+      const changes = db
+        .prepare("SELECT * FROM file_changes WHERE session_id = ? ORDER BY turn, path")
+        .all(sessionId) as Record<string, string | number | Uint8Array | null>[];
+      const bytes = (value: unknown) => (value instanceof Uint8Array ? Buffer.from(value) : null);
       return {
         info: {
           id: String(row.id),
@@ -216,6 +258,15 @@ export function openSessionStore(path: string): SqliteSessionStore {
             cost: Number(t.cost),
           };
         }),
+        fileChanges: changes.map((c) => ({
+          turn: Number(c.turn),
+          path: String(c.path),
+          display: String(c.display),
+          turnTitle: String(c.turn_title),
+          before: bytes(c.before),
+          after: bytes(c.after),
+          tooBig: Number(c.too_big) === 1,
+        })),
       };
     },
 

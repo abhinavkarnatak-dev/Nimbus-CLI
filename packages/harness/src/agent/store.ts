@@ -1,3 +1,4 @@
+import type { FileChange } from "../tools/changes.js";
 import type { HistoryItem, Usage } from "../model/types.js";
 
 export interface SessionInfo {
@@ -26,6 +27,8 @@ export interface SessionStore {
   saveItems(session: SessionInfo, turn: number, items: HistoryItem[]): void;
   saveToolView(sessionId: string, turn: number, view: ToolView): void;
   endTurn(sessionId: string, turn: number, status: TurnStatus, usage: Usage, cost: number): void;
+  // Saved again after every write to the same file in a turn
+  saveFileChange(sessionId: string, change: FileChange): void;
 }
 
 export interface MemoryTurn {
@@ -64,5 +67,14 @@ export class MemorySessionStore implements SessionStore {
 
   endTurn(sessionId: string, turn: number, status: TurnStatus, usage: Usage, cost: number): void {
     Object.assign(this.#turn(sessionId, turn), { status, usage: { ...usage }, cost });
+  }
+
+  readonly fileChanges = new Map<string, FileChange[]>();
+
+  saveFileChange(sessionId: string, change: FileChange): void {
+    const list = (this.fileChanges.get(sessionId) ?? []).filter(
+      (saved) => !(saved.turn === change.turn && saved.path === change.path),
+    );
+    this.fileChanges.set(sessionId, [...list, { ...change }]);
   }
 }

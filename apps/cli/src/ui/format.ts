@@ -69,6 +69,18 @@ export function toolLabel(name: string, rawArgs: string): { verb: string; target
       return { verb: "Stop", target: str("id") };
     case "web_search":
       return { verb: "Search", target: `"${clip(str("query"), 60)}"` };
+    case "undo_changes": {
+      const replies = typeof args.replies === "number" ? args.replies : 1;
+      const paths = Array.isArray(args.paths)
+        ? args.paths.filter((p) => typeof p === "string")
+        : [];
+      const scope = paths.length
+        ? paths.join(", ")
+        : replies === 1
+          ? "last reply"
+          : `last ${replies} replies`;
+      return { verb: "Undo", target: clip(scope, 70) };
+    }
     default:
       return { verb: name, target: clip(rawArgs, 60) };
   }
@@ -140,6 +152,12 @@ export function describeResult(name: string, summary: string, isError: boolean):
     }
     case "kill_process":
       return first === "stopped" ? "Stopped" : first;
+    case "undo_changes": {
+      const undo = /^restored (\d+)(?:, skipped (\d+))?$/.exec(first);
+      if (!undo) return first === "nothing to undo" ? "Nothing to undo" : first;
+      const restored = `Restored ${plural(Number(undo[1]), "file")}`;
+      return undo[2] ? `${restored}, skipped ${undo[2]}` : restored;
+    }
     default:
       return first;
   }

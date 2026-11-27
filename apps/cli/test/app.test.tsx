@@ -208,6 +208,7 @@ describe("App", () => {
           cost: 0,
         },
       ],
+      fileChanges: [],
     };
     const sessions: SessionHistory = {
       list: () => [{ id: "old", title: "rename the helper", updatedAt: saved.updatedAt, turns: 1 }],

@@ -2,7 +2,7 @@ import type { Session, Usage } from "@nimbus/harness";
 import type { AuthController } from "../auth/controller.js";
 import type { BillingController } from "../billing/controller.js";
 import type { Route } from "../settings.js";
-import { Box, Static, useApp, useInput } from "ink";
+import { Box, Static, useApp, useInput, useWindowSize } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HELP_TEXT, matchCommands, parseCommand } from "./commands.js";
 import { emptyDraft, fromText, type Draft } from "./editor.js";
@@ -17,6 +17,7 @@ import type { SavedSession, SessionHistory } from "../store/sqlite.js";
 import { ResumePanel, type ResumePicker } from "./ResumePanel.js";
 import { timeAgo, transcriptFrom } from "./resume.js";
 import { applyEvent, newId, settle, type Item } from "./transcript.js";
+import { WidthContext } from "./width.js";
 
 const FLUSH_MS = 50;
 const EXIT_WINDOW_MS = 2000;
@@ -84,6 +85,7 @@ export function App({
   const [browsingHistory, setBrowsingHistory] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [runningSince, setRunningSince] = useState<number | null>(null);
+  const { columns } = useWindowSize();
   const [retryWait, setRetryWait] = useState<RetryInfo | null>(null);
   const waiting = useRef(false);
   const [queued, setQueued] = useState<string | null>(null);
@@ -658,45 +660,49 @@ export function App({
             : "/help for commands";
 
   return (
-    <Box flexDirection="column">
-      <Static key={staticKey} items={done}>
-        {(item) =>
-          item.kind === "header" ? (
-            <Header
-              key={item.id}
-              info={route === "key" ? { ...info, route: "your OpenAI key" } : info}
-              account={account ?? (loggedIn ? undefined : "not logged in")}
-            />
-          ) : (
-            <ItemView key={item.id} item={item} />
-          )
-        }
-      </Static>
-      {live.map((item) => (item.kind === "header" ? null : <ItemView key={item.id} item={item} />))}
-      {runningSince !== null && <WorkingLine since={runningSince} retry={retryWait} />}
-      <LoginPanel login={login} />
-      <BillingPanel panel={panel} />
-      <ResumePanel picker={picker} />
-      <Box marginTop={1} flexDirection="column">
-        <PromptInput
-          draft={draft}
-          onChange={setDraft}
-          onSubmit={submit}
-          history={history}
-          placeholder={panel.kind === "key" ? "sk-..." : "Ask Nimbus anything"}
-          menu={menu}
-          selected={selected}
-          onSelect={setMenuIndex}
-          onBrowsingChange={setBrowsingHistory}
-          mask={panel.kind === "key"}
-          active={panel.kind !== "use" && !picker}
-        />
-        {menu.length > 0 ? (
-          <CommandMenu commands={menu} selected={selected} />
-        ) : (
-          <StatusBar model={info.model} hint={hint} />
+    <WidthContext.Provider value={columns}>
+      <Box flexDirection="column">
+        <Static key={staticKey} items={done}>
+          {(item) =>
+            item.kind === "header" ? (
+              <Header
+                key={item.id}
+                info={route === "key" ? { ...info, route: "your OpenAI key" } : info}
+                account={account ?? (loggedIn ? undefined : "not logged in")}
+              />
+            ) : (
+              <ItemView key={item.id} item={item} />
+            )
+          }
+        </Static>
+        {live.map((item) =>
+          item.kind === "header" ? null : <ItemView key={item.id} item={item} />,
         )}
+        {runningSince !== null && <WorkingLine since={runningSince} retry={retryWait} />}
+        <LoginPanel login={login} />
+        <BillingPanel panel={panel} />
+        <ResumePanel picker={picker} />
+        <Box marginTop={1} flexDirection="column">
+          <PromptInput
+            draft={draft}
+            onChange={setDraft}
+            onSubmit={submit}
+            history={history}
+            placeholder={panel.kind === "key" ? "sk-..." : "Ask Nimbus anything"}
+            menu={menu}
+            selected={selected}
+            onSelect={setMenuIndex}
+            onBrowsingChange={setBrowsingHistory}
+            mask={panel.kind === "key"}
+            active={panel.kind !== "use" && !picker}
+          />
+          {menu.length > 0 ? (
+            <CommandMenu commands={menu} selected={selected} />
+          ) : (
+            <StatusBar model={info.model} hint={hint} />
+          )}
+        </Box>
       </Box>
-    </Box>
+    </WidthContext.Provider>
   );
 }

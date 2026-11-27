@@ -36,6 +36,10 @@ export function resumeStateFrom(saved: SavedSession): ResumeState {
     title: saved.info.title,
     usage,
     cost: saved.turns.reduce((sum, turn) => sum + turn.cost, 0),
+    fileChanges: saved.fileChanges,
+    commandTurns: saved.turns
+      .filter((turn) => turn.views.some((view) => view.name === "bash"))
+      .map((turn) => turn.turn),
   };
 }
 

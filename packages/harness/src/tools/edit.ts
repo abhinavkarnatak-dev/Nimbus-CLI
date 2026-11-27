@@ -88,8 +88,10 @@ The file must have been read in this session and not changed since.
     const text = replace_all
       ? before.text.split(search).join(replacement)
       : before.text.replace(search, () => replacement);
-    await writeFile(file, encodeText({ ...before, text }));
+    const written = Buffer.from(encodeText({ ...before, text }));
+    await writeFile(file, written);
     await ctx.files.markCurrent(file);
+    ctx.changes?.record(file, display, bytes, written);
 
     const change = describeChange(display, before.text, text);
     const replaced = replace_all && count > 1 ? ` Replaced ${count} occurrences.` : "";

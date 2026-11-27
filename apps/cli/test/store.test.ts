@@ -87,6 +87,36 @@ describe("SQLite session store", () => {
     store.close();
   });
 
+  it("keeps file copies for undo, with the latest version of each file", async () => {
+    const path = await dbPath();
+    const store = openSessionStore(path);
+    const info = { id: "s1", cwd: "/p", model: "gpt-6-luna", title: "edit" };
+    store.saveItems(info, 1, [{ role: "user", content: "edit" }]);
+    const change = {
+      turn: 1,
+      turnTitle: "edit",
+      path: "/p/a.txt",
+      display: "a.txt",
+      before: Buffer.from("old"),
+      after: Buffer.from("mid"),
+      tooBig: false,
+    };
+    store.saveFileChange("s1", change);
+    store.saveFileChange("s1", {
+      ...change,
+      before: Buffer.from("ignored"),
+      after: Buffer.from("new"),
+    });
+    store.saveFileChange("s1", { ...change, path: "/p/b.txt", display: "b.txt", before: null });
+    store.close();
+
+    const [a, b] = openSessionStore(path).load("s1")!.fileChanges;
+    expect(a).toMatchObject({ display: "a.txt", turnTitle: "edit", tooBig: false });
+    expect(a!.before!.toString()).toBe("old");
+    expect(a!.after!.toString()).toBe("new");
+    expect(b!.before).toBeNull();
+  });
+
   it("opens an existing file without running the schema twice", async () => {
     const path = await dbPath();
     openSessionStore(path).close();

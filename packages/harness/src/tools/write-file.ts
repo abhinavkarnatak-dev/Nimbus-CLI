@@ -37,6 +37,7 @@ Prefer edit for small changes to existing files.
       await mkdir(dirname(target.path), { recursive: true });
       await writeFile(target.path, content);
       await ctx.files.markCurrent(target.path);
+      ctx.changes?.record(target.path, display, null, Buffer.from(content));
       const change = describeChange(display, "", content);
       return {
         output: `Created ${display} (${linesLabel(content)}).`,
@@ -52,8 +53,10 @@ Prefer edit for small changes to existing files.
 
     const before = decodeText(bytes);
     const text = withEol(content, before.eol);
-    await writeFile(target.path, encodeText({ ...before, text }));
+    const written = Buffer.from(encodeText({ ...before, text }));
+    await writeFile(target.path, written);
     await ctx.files.markCurrent(target.path);
+    ctx.changes?.record(target.path, display, bytes, written);
 
     const change = describeChange(display, before.text, text);
     return {

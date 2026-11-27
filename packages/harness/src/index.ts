@@ -59,6 +59,15 @@ export {
 export { bashOutputTool, bashTool, killProcessTool } from "./tools/bash.js";
 export { blockedReason } from "./tools/blocklist.js";
 export { editTool } from "./tools/edit.js";
+export {
+  ChangeLog,
+  MAX_SNAPSHOT_BYTES,
+  type FileChange,
+  type UndoFileResult,
+  type UndoRequest,
+  type UndoResult,
+} from "./tools/changes.js";
+export { describeUndo, undoTool } from "./tools/undo.js";
 export { FileTracker } from "./tools/file-state.js";
 export { globTool } from "./tools/glob.js";
 export { grepTool } from "./tools/grep.js";
@@ -75,6 +84,7 @@ import { globTool } from "./tools/glob.js";
 import { grepTool } from "./tools/grep.js";
 import { readFileTool } from "./tools/read-file.js";
 import type { Tool } from "./tools/types.js";
+import { undoTool } from "./tools/undo.js";
 import { writeFileTool } from "./tools/write-file.js";
 
 export const defaultTools: Tool[] = [
@@ -83,6 +93,7 @@ export const defaultTools: Tool[] = [
   grepTool,
   editTool,
   writeFileTool,
+  undoTool,
   bashTool,
   bashOutputTool,
   killProcessTool,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ChangeLog } from "./changes.js";
 import type { FileTracker } from "./file-state.js";
 import type { ProcessManager } from "./processes.js";
 import type { ShellInfo } from "./shell.js";
@@ -27,6 +28,8 @@ export interface ToolContext {
   shell?: ShellInfo;
   processes?: ProcessManager;
   search?: SearchFn;
+  // Copies of changed files, for undo_changes
+  changes?: ChangeLog;
 }
 
 export interface ToolResult {

@@ -1,5 +1,6 @@
 import chalk from "chalk";
-import { Text, useWindowSize } from "ink";
+import { Text } from "ink";
+import { useWidth } from "./width.js";
 import { Marked } from "marked";
 import { markedTerminal } from "marked-terminal";
 import { memo } from "react";
@@ -56,6 +57,6 @@ export const Markdown = memo(function Markdown({
   text: string;
   indent?: number;
 }) {
-  const { columns } = useWindowSize();
+  const columns = useWidth();
   return <Text>{renderMarkdown(text, columns - indent - 1)}</Text>;
 });

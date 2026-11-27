@@ -8,6 +8,7 @@ import {
   type ModelClient,
   type Usage,
 } from "../model/types.js";
+import { ChangeLog } from "../tools/changes.js";
 import { FileTracker } from "../tools/file-state.js";
 import { ProcessManager } from "../tools/processes.js";
 import type { ShellInfo } from "../tools/shell.js";
@@ -101,6 +102,7 @@ export class Session {
   readonly #history: HistoryItem[] = [];
   readonly #usage: Usage = emptyUsage();
   readonly #files = new FileTracker();
+  readonly #changes: ChangeLog;
   readonly #processes = new ProcessManager();
   readonly #shell: ShellInfo | undefined;
   readonly #search: SearchFn | undefined;
@@ -127,6 +129,11 @@ export class Session {
     this.#shell = options.shell;
     this.#search = options.search;
     this.#store = options.store;
+    this.#changes = new ChangeLog(
+      (change) => this.#save((store) => store.saveFileChange(this.id, change)),
+      options.resume?.fileChanges,
+    );
+    for (const turn of options.resume?.commandTurns ?? []) this.#changes.noteCommand(turn);
     if (options.resume) {
       this.#history.push(...options.resume.history);
       this.#turn = options.resume.turns;
@@ -256,7 +263,10 @@ export class Session {
       shell: this.#shell,
       processes: this.#processes,
       search: this.#search,
+      changes: this.#changes,
     };
+    const first = turnItems[0] as { content?: unknown } | undefined;
+    this.#changes.begin(turn, typeof first?.content === "string" ? first.content : "");
     const toolSpecs = [...this.#tools.values()].map(({ name, description, parameters }) => ({
       name,
       description,
@@ -290,6 +300,7 @@ export class Session {
             args: call.arguments,
           };
           const started = Date.now();
+          if (call.name === "bash") this.#changes.noteCommand(turn);
           // A call id that already ran never runs twice
           const earlier = this.#outputs.get(call.call_id);
           const result: ToolResult =

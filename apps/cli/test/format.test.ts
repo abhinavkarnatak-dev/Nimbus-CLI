@@ -63,6 +63,22 @@ describe("format", () => {
     );
   });
 
+  it("labels and describes undo_changes", () => {
+    const none = JSON.stringify({ replies: null, paths: null });
+    expect(toolLabel("undo_changes", none)).toEqual({ verb: "Undo", target: "last reply" });
+    expect(toolLabel("undo_changes", JSON.stringify({ replies: 2, paths: null })).target).toBe(
+      "last 2 replies",
+    );
+    expect(toolLabel("undo_changes", JSON.stringify({ paths: ["a.ts", "b.ts"] })).target).toBe(
+      "a.ts, b.ts",
+    );
+    expect(describeResult("undo_changes", "restored 1", false)).toBe("Restored 1 file");
+    expect(describeResult("undo_changes", "restored 2, skipped 1", false)).toBe(
+      "Restored 2 files, skipped 1",
+    );
+    expect(describeResult("undo_changes", "nothing to undo", false)).toBe("Nothing to undo");
+  });
+
   it("numbers diff lines from the hunk header", () => {
     const diff = [
       "--- a.js",

@@ -59,6 +59,7 @@ const saved: SavedSession = {
       cost: 0.002,
     },
   ],
+  fileChanges: [],
 };
 
 describe("resume", () => {
@@ -88,6 +89,8 @@ describe("resume", () => {
     expect(state.title).toBe("fix it");
     expect(state.usage).toEqual({ inputTokens: 125, cachedTokens: 50, outputTokens: 12 });
     expect(state.history).toContainEqual({ role: "user", content: ERROR_NOTE });
+    expect(state.commandTurns).toEqual([]);
+    expect(state.fileChanges).toEqual([]);
   });
 
   it("says how long ago in plain words", () => {

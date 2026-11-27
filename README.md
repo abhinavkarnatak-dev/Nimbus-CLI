@@ -36,6 +36,8 @@ pnpm nimbus --resume <path to your project>
 pnpm nimbus --continue <path to your project>
 ```
 
+Changed your mind about an edit? Just ask Nimbus to undo or revert it. It puts the files back from saved copies and keeps any edits you made yourself. Changes made by commands it ran cannot be undone.
+
 If your internet drops for a moment, Nimbus tries again by itself, up to 5 times, and shows a countdown. Press `Esc` to stop waiting.
 
 ## Paying for model calls

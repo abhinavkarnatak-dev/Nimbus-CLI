@@ -492,6 +492,7 @@ describe("Session", () => {
         },
         saveToolView: () => {},
         endTurn: () => {},
+        saveFileChange: () => {},
       };
       const session = newSession(
         new FakeModelClient([{ text: "one" }, { text: "two" }]),
