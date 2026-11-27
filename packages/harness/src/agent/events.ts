@@ -16,4 +16,13 @@ export type AgentEvent =
   | { type: "turn_complete"; usage: Usage; cost: number }
   | { type: "turn_cancelled" }
   | { type: "warning"; message: string }
+  // A model call failed and will be tried again after delayMs
+  | {
+      type: "retrying";
+      attempt: number;
+      maxRetries: number;
+      delayMs: number;
+      reason: string;
+      restarted: boolean;
+    }
   | { type: "error"; message: string; status?: number; code?: string };

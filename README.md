@@ -36,6 +36,8 @@ pnpm nimbus --resume <path to your project>
 pnpm nimbus --continue <path to your project>
 ```
 
+If your internet drops for a moment, Nimbus tries again by itself, up to 5 times, and shows a countdown. Press `Esc` to stop waiting.
+
 ## Paying for model calls
 
 Invited accounts start with free Nimbus credit. You can also use your own OpenAI key: add it with `/key` inside Nimbus. The key stays on your computer and model calls go straight to OpenAI. Switch between the two with `/use`.

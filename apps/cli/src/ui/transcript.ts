@@ -19,6 +19,8 @@ export type Item =
     }
   | { kind: "notice"; id: number; text: string; tone: "info" | "error" };
 
+export const RESTARTED_NOTICE = "Connection dropped mid-reply, starting the reply again.";
+
 let nextId = 1;
 export const newId = () => nextId++;
 
@@ -63,6 +65,11 @@ export function applyEvent(items: Item[], event: AgentEvent, now = Date.now()): 
     case "error":
     case "warning":
       return [...items, { kind: "notice", id: newId(), text: event.message, tone: "error" }];
+    case "retrying":
+      // The half-shown reply stays, the new one starts below it
+      return event.restarted
+        ? [...items, { kind: "notice", id: newId(), text: RESTARTED_NOTICE, tone: "info" }]
+        : items;
     case "turn_complete":
       return items;
   }

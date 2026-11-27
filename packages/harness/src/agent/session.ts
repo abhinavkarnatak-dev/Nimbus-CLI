@@ -12,7 +12,7 @@ import { FileTracker } from "../tools/file-state.js";
 import { ProcessManager } from "../tools/processes.js";
 import type { ShellInfo } from "../tools/shell.js";
 import { truncateOutput } from "../tools/truncate.js";
-import type { SearchFn, Tool, ToolContext, ToolResult } from "../tools/types.js";
+import type { SearchFn, Tool, ToolContext, ToolResult, ToolSpec } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
 import {
   closeTurn,
@@ -22,6 +22,15 @@ import {
   type ResumeState,
 } from "./resume.js";
 import type { SessionStore, ToolView, TurnStatus } from "./store.js";
+import {
+  ConnectionLostError,
+  isNetworkError,
+  isRetryable,
+  MAX_RETRIES,
+  retryDelayMs,
+  retryReason,
+  sleep,
+} from "../model/retry.js";
 
 export const DEFAULT_MAX_STEPS = 25;
 
@@ -29,6 +38,10 @@ export const DEFAULT_MAX_STEPS = 25;
 export const STOPPED_NOTE = "[The user stopped this reply before it finished.]";
 export const STOPPED_TOOL_OUTPUT =
   "Stopped by the user before this finished. It may have partly run, so check before running it again.";
+
+// Shown when every retry failed to reach the server
+export const CONNECTION_FAILED =
+  "Could not reach the server, even after retrying. Check your internet connection and try again.";
 
 export interface SessionOptions {
   client: ModelClient;
@@ -44,6 +57,9 @@ export interface SessionOptions {
   store?: SessionStore;
   // Continue a saved session; id must be the saved one
   resume?: ResumeState;
+  // Retries for a failed model call, never for tools
+  maxRetries?: number;
+  retryDelay?: (error: unknown, attempt: number) => number;
 }
 
 interface TurnState {
@@ -80,6 +96,8 @@ export class Session {
   readonly #instructions: string;
   readonly #tools: Map<string, Tool>;
   readonly #maxSteps: number;
+  readonly #maxRetries: number;
+  readonly #retryDelay: (error: unknown, attempt: number) => number;
   readonly #history: HistoryItem[] = [];
   readonly #usage: Usage = emptyUsage();
   readonly #files = new FileTracker();
@@ -104,6 +122,8 @@ export class Session {
     this.#instructions = options.instructions;
     this.#tools = new Map((options.tools ?? []).map((tool) => [tool.name, tool]));
     this.#maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
+    this.#maxRetries = options.maxRetries ?? MAX_RETRIES;
+    this.#retryDelay = options.retryDelay ?? retryDelayMs;
     this.#shell = options.shell;
     this.#search = options.search;
     this.#store = options.store;
@@ -256,31 +276,7 @@ export class Session {
           return;
         }
 
-        let output: HistoryItem[] | undefined;
-        const events = this.#client.stream(
-          {
-            model: this.model,
-            instructions: this.#instructions,
-            input: [...this.#history, ...turnItems],
-            tools: toolSpecs.length > 0 ? toolSpecs : undefined,
-            promptCacheKey: this.id,
-          },
-          signal,
-        );
-        for await (const event of events) {
-          if (event.type === "text_delta") {
-            yield { type: "text_delta", text: event.text };
-          } else {
-            output = event.output;
-            const cost = costOf(this.model, event.usage);
-            addUsage(state.usage, event.usage);
-            addUsage(this.#usage, event.usage);
-            state.cost += cost;
-            this.#cost += cost;
-          }
-        }
-        if (!output) throw new Error("Model stream ended without completing");
-
+        const output = yield* this.#callModel(state, toolSpecs, signal);
         turnItems.push(...output);
         this.#saveItems(turn, output);
         const calls = output.filter(isFunctionCall);
@@ -343,10 +339,61 @@ export class Session {
       this.#pending = state;
       this.#endTurn(turn, "failed", state.usage, state.cost);
       yield* this.#storeWarning();
-      yield { type: "error", message: errorMessage(error), ...errorDetails(error) };
+      const message = isNetworkError(error) ? CONNECTION_FAILED : errorMessage(error);
+      yield { type: "error", message, ...errorDetails(error) };
     }
   }
 
+  // One model step, retried on network and server errors
+  async *#callModel(
+    state: TurnState,
+    tools: ToolSpec[],
+    signal?: AbortSignal,
+  ): AsyncGenerator<AgentEvent, HistoryItem[]> {
+    for (let attempt = 1; ; attempt++) {
+      let streamed = false;
+      try {
+        let output: HistoryItem[] | undefined;
+        const events = this.#client.stream(
+          {
+            model: this.model,
+            instructions: this.#instructions,
+            input: [...this.#history, ...state.items],
+            tools: tools.length > 0 ? tools : undefined,
+            promptCacheKey: this.id,
+          },
+          signal,
+        );
+        for await (const event of events) {
+          if (event.type === "text_delta") {
+            streamed = true;
+            yield { type: "text_delta", text: event.text };
+          } else {
+            output = event.output;
+            const cost = costOf(this.model, event.usage);
+            addUsage(state.usage, event.usage);
+            addUsage(this.#usage, event.usage);
+            state.cost += cost;
+            this.#cost += cost;
+          }
+        }
+        if (!output) throw new ConnectionLostError("The reply ended before it finished.");
+        return output;
+      } catch (error) {
+        if (signal?.aborted || attempt > this.#maxRetries || !isRetryable(error)) throw error;
+        const delayMs = this.#retryDelay(error, attempt);
+        yield {
+          type: "retrying",
+          attempt,
+          maxRetries: this.#maxRetries,
+          delayMs,
+          reason: retryReason(error),
+          restarted: streamed,
+        };
+        await sleep(delayMs, signal);
+      }
+    }
+  }
 
   async #runTool(call: FunctionCallItem, ctx: ToolContext): Promise<ToolResult> {
     const tool = this.#tools.get(call.name);

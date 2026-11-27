@@ -7,7 +7,7 @@ import { apiTokens, usageEvents, users } from "../src/db/schema.js";
 import { issueToken } from "../src/db/tokens.js";
 import { silentLogger } from "../src/log.js";
 import type { CallReport } from "../src/proxy/route.js";
-import { FinalEventScanner } from "../src/proxy/usage.js";
+import { FinalEventScanner, relay } from "../src/proxy/usage.js";
 import { testDb } from "./db.js";
 import { fakeGoogle } from "./fake-google.js";
 import { fakeUpstream, SSE_EVENTS, sse } from "./fake-upstream.js";
@@ -46,6 +46,7 @@ async function setup(upstreamOptions?: Parameters<typeof fakeUpstream>[0]) {
     config,
     db,
     fetchUpstream: upstream.fetchUpstream,
+    retryDelaysMs: [0, 0],
     log: silentLogger,
     onRecorded: (report, error) => recorded.push({ report, error }),
   });
@@ -190,6 +191,36 @@ describe("proxy", () => {
 
     const down = await setup({ throws: true });
     expect((await down.post(validBody)).status).toBe(502);
+    expect(down.upstream.calls).toHaveLength(3);
+    expect((await keyProblem.post(validBody)).headers.get("x-should-retry")).toBe("false");
+    expect(keyProblem.upstream.calls).toHaveLength(2);
+  });
+
+  it("retries the model service before anything was streamed", async () => {
+    const { token } = await issueToken(db, `user${++userCount}@test.dev`, "test");
+    const good = fakeUpstream();
+    let calls = 0;
+    const app = createApp({
+      google: fakeGoogle().google,
+      config,
+      db,
+      retryDelaysMs: [0, 0],
+      log: silentLogger,
+      fetchUpstream: (async (url: string, init?: RequestInit) => {
+        calls++;
+        if (calls === 1) throw new TypeError("fetch failed");
+        if (calls === 2) return new Response("{}", { status: 503 });
+        return good.fetchUpstream(url, init);
+      }) as typeof fetch,
+    });
+    const res = await app.request("/v1/responses", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(SSE_EVENTS.map(sse).join(""));
+    expect(calls).toBe(3);
   });
 
   it("refuses bodies over the size limit", async () => {
@@ -268,6 +299,24 @@ describe("ledger", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(recorded).toHaveLength(0);
     expect(await rows()).toHaveLength(0);
+  });
+});
+
+describe("relay", () => {
+  it("pings while the model is quiet and keeps the events intact", async () => {
+    const encoder = new TextEncoder();
+    const upstream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        await new Promise((r) => setTimeout(r, 60));
+        controller.enqueue(encoder.encode(sse(SSE_EVENTS[3])));
+        controller.close();
+      },
+    });
+    let end: unknown;
+    const text = await new Response(relay(upstream, (e) => (end = e), 20)).text();
+    expect(text.startsWith(": ping\n\n")).toBe(true);
+    expect(text.replaceAll(": ping\n\n", "")).toBe(sse(SSE_EVENTS[3]));
+    expect(end).toMatchObject({ kind: "finished", status: "completed" });
   });
 });
 

@@ -86,14 +86,20 @@ export class FinalEventScanner {
   }
 }
 
+// SSE comment the SDK ignores, sent while the model is quiet
+export const KEEPALIVE_MS = 15_000;
+const PING = new TextEncoder().encode(": ping\n\n");
+
 // Relay upstream bytes as they are and report how the stream ended
 export function relay(
   upstream: ReadableStream<Uint8Array>,
   onEnd: (end: StreamEnd, streamedChars: number) => void,
+  keepAliveMs = KEEPALIVE_MS,
 ): ReadableStream<Uint8Array> {
   const reader = upstream.getReader();
   const scanner = new FinalEventScanner();
   let ended = false;
+  let pending: ReturnType<typeof reader.read> | null = null;
   const finish = (end: StreamEnd) => {
     if (ended) return;
     ended = true;
@@ -102,8 +108,20 @@ export function relay(
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
+      let timer: NodeJS.Timeout | undefined;
+      const quiet = new Promise<"ping">((resolve) => {
+        timer = setTimeout(() => resolve("ping"), keepAliveMs);
+      });
       try {
-        const { done, value } = await reader.read();
+        // A read that outlives a ping is picked up on the next pull
+        pending ??= reader.read();
+        const result = await Promise.race([pending, quiet]);
+        if (result === "ping") {
+          controller.enqueue(PING);
+          return;
+        }
+        pending = null;
+        const { done, value } = result;
         if (done) {
           scanner.end();
           finish(scanner.final ?? { kind: "no_final_event" });
@@ -115,6 +133,8 @@ export function relay(
       } catch (error) {
         finish({ kind: "upstream_error", message: (error as Error).message });
         controller.error(error);
+      } finally {
+        clearTimeout(timer);
       }
     },
     // Client went away, stop the model too

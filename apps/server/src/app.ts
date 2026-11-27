@@ -42,6 +42,8 @@ export interface AppDeps {
   google: GoogleAuth;
   fetchUpstream?: typeof fetch;
   fetchSearch?: typeof fetch;
+  // Waits between upstream retries (tests use zeros)
+  retryDelaysMs?: number[];
   log?: Logger;
   // Resolves once the ledger write is done (used by tests)
   onRecorded?: (report: CallReport, error?: unknown) => void;
@@ -115,6 +117,7 @@ export function createApp(deps: AppDeps) {
   // Budget checks before any money is spent
   const guard: MiddlewareHandler<AppEnv> = async (c, next) => {
     if (limits.paused) {
+      c.header("x-should-retry", "false");
       return apiError(c, 503, "Nimbus is paused right now. Try again later.", "server_error");
     }
     await spend
@@ -124,6 +127,7 @@ export function createApp(deps: AppDeps) {
       );
     if (spend.total >= limits.globalBudgetMicroUsd) {
       log("warn", "global budget reached", { total: spend.total });
+      c.header("x-should-retry", "false");
       return apiError(
         c,
         503,
@@ -213,6 +217,7 @@ export function createApp(deps: AppDeps) {
       apiKey: deps.config.openaiApiKey,
       maxOutputTokens: deps.config.maxOutputTokens,
       fetchUpstream: deps.fetchUpstream ?? fetch,
+      retryDelaysMs: deps.retryDelaysMs,
       log,
       onCallEnd,
     }),
@@ -227,6 +232,7 @@ export function createApp(deps: AppDeps) {
       baseUrl: deps.config.tavilyBaseUrl ?? "https://api.tavily.com",
       monthlyLimit: deps.config.searchMonthlyLimit ?? 900,
       fetchFn: deps.fetchSearch ?? fetch,
+      retryDelaysMs: deps.retryDelaysMs,
       log,
       onCost: (cost) => spend.add(cost),
     }),

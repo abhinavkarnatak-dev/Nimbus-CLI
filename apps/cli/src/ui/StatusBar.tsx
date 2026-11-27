@@ -4,12 +4,34 @@ import { useEffect, useState } from "react";
 import type { SlashCommand } from "./commands.js";
 import { theme } from "./theme.js";
 
-export function WorkingLine({ since }: { since: number }) {
+export interface RetryInfo {
+  until: number;
+  attempt: number;
+  maxRetries: number;
+  reason: string;
+}
+
+export function WorkingLine({ since, retry }: { since: number; retry?: RetryInfo | null }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    const timer = setInterval(() => setNow(Date.now()), retry ? 250 : 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [retry]);
+  if (retry) {
+    const left = Math.max(0, Math.ceil((retry.until - now) / 1000));
+    const when = left > 0 ? `retrying in ${left}s` : "retrying now";
+    return (
+      <Box marginTop={1}>
+        <Text color={theme.warning}>
+          <Spinner type="dots" /> {retry.reason}, {when}
+        </Text>
+        <Text color={theme.muted}>
+          {" "}
+          (attempt {retry.attempt} of {retry.maxRetries} · esc to stop)
+        </Text>
+      </Box>
+    );
+  }
   const seconds = Math.floor((now - since) / 1000);
   return (
     <Box marginTop={1}>

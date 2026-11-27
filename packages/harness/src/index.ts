@@ -10,7 +10,7 @@ export {
   type ToolView,
   type TurnStatus,
 } from "./agent/store.js";
-export { STOPPED_NOTE, STOPPED_TOOL_OUTPUT } from "./agent/session.js";
+export { CONNECTION_FAILED, STOPPED_NOTE, STOPPED_TOOL_OUTPUT } from "./agent/session.js";
 export {
   closeTurn,
   ERROR_NOTE,
@@ -21,7 +21,17 @@ export {
   type ResumeState,
   type SavedTurnItems,
 } from "./agent/resume.js";
-export { OpenAIModelClient, type OpenAIModelClientOptions } from "./model/openai.js";
+export { idleFetch, OpenAIModelClient, type OpenAIModelClientOptions } from "./model/openai.js";
+export {
+  ConnectionLostError,
+  isNetworkError,
+  isRetryable,
+  MAX_RETRIES,
+  RETRY_DELAY_MS,
+  retryDelayMs,
+  retryReason,
+  sleep,
+} from "./model/retry.js";
 export { FakeModelClient, type FakeToolCall, type FakeTurn } from "./model/fake.js";
 export {
   emptyUsage,

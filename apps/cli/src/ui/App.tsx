@@ -12,7 +12,7 @@ import { ItemView } from "./ItemView.js";
 import { BillingPanel, type BillingPanelState } from "./BillingPanel.js";
 import { LoginPanel, type LoginPhase } from "./LoginPanel.js";
 import { PromptInput } from "./PromptInput.js";
-import { CommandMenu, StatusBar, WorkingLine } from "./StatusBar.js";
+import { CommandMenu, StatusBar, WorkingLine, type RetryInfo } from "./StatusBar.js";
 import type { SavedSession, SessionHistory } from "../store/sqlite.js";
 import { ResumePanel, type ResumePicker } from "./ResumePanel.js";
 import { timeAgo, transcriptFrom } from "./resume.js";
@@ -84,6 +84,8 @@ export function App({
   const [browsingHistory, setBrowsingHistory] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [runningSince, setRunningSince] = useState<number | null>(null);
+  const [retryWait, setRetryWait] = useState<RetryInfo | null>(null);
+  const waiting = useRef(false);
   const [queued, setQueued] = useState<string | null>(null);
   const [exitArmed, setExitArmed] = useState(false);
   const [account, setAccount] = useState<string | null>(auth.state.email);
@@ -191,6 +193,20 @@ export function App({
       // A retry continues the failed turn instead of sending the message again
       const events = again ? current.retry(abort.signal) : current.send(text, abort.signal);
       for await (const event of events) {
+        // Back to normal once anything else arrives
+        if (waiting.current && event.type !== "retrying") {
+          waiting.current = false;
+          setRetryWait(null);
+        }
+        if (event.type === "retrying") {
+          waiting.current = true;
+          setRetryWait({
+            until: Date.now() + event.delayMs,
+            attempt: event.attempt,
+            maxRetries: event.maxRetries,
+            reason: event.reason,
+          });
+        }
         const onKey = billing.state.route === "key";
         // Out of money on one side: switch to the other once and resend
         if (event.type === "error" && !switched) {
@@ -260,6 +276,8 @@ export function App({
       }
       flush(true);
       controller.current = null;
+      waiting.current = false;
+      setRetryWait(null);
       setRunningSince(null);
       if (retry) await runTurn(text, { echo: false, retry: true, switched: true });
     },
@@ -655,7 +673,7 @@ export function App({
         }
       </Static>
       {live.map((item) => (item.kind === "header" ? null : <ItemView key={item.id} item={item} />))}
-      {runningSince !== null && <WorkingLine since={runningSince} />}
+      {runningSince !== null && <WorkingLine since={runningSince} retry={retryWait} />}
       <LoginPanel login={login} />
       <BillingPanel panel={panel} />
       <ResumePanel picker={picker} />

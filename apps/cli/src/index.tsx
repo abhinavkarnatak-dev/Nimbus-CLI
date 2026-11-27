@@ -36,7 +36,9 @@ if (folder) process.chdir(resolve(folder));
 const setup = resolveSetup();
 const { serverUrl } = setup;
 const switchable = new SwitchableModelClient(
-  (token) => new OpenAIModelClient({ apiKey: token, baseURL: `${serverUrl}/v1` }),
+  // The server pings every 15s, so a minute of silence means a dead connection
+  (token) =>
+    new OpenAIModelClient({ apiKey: token, baseURL: `${serverUrl}/v1`, idleTimeoutMs: 60_000 }),
 );
 const auth = new AuthController({
   serverUrl,

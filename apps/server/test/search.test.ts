@@ -62,6 +62,7 @@ async function setup(config: Partial<AppDeps["config"]> = {}, tavily: FakeTavily
     db,
     google: fakeGoogle().google,
     fetchSearch,
+    retryDelaysMs: [0, 0],
     log: silentLogger,
   });
   const search = (body: unknown) =>
@@ -123,6 +124,7 @@ describe("web search", () => {
     const { search, calls } = await setup({ searchMonthlyLimit: 0 });
     const res = await search({ query: "anything" });
     expect(res.status).toBe(503);
+    expect(res.headers.get("x-should-retry")).toBe("false");
     expect(await res.text()).toContain("limit reached for this month");
     expect(calls).toHaveLength(0);
   });
@@ -131,10 +133,14 @@ describe("web search", () => {
     const keyProblem = await setup({}, { status: 401 });
     expect((await keyProblem.search({ query: "x y" })).status).toBe(502);
     const outOfCredits = await setup({}, { status: 432 });
-    expect((await outOfCredits.search({ query: "x y" })).status).toBe(503);
+    const noCredits = await outOfCredits.search({ query: "x y" });
+    expect(noCredits.status).toBe(503);
+    expect(noCredits.headers.get("x-should-retry")).toBe("false");
+    expect(outOfCredits.calls).toHaveLength(1);
     const failed = await setup({}, { status: 500 });
     const res = await failed.search({ query: "x y" });
     expect(res.status).toBe(502);
+    expect(failed.calls).toHaveLength(3);
     expect(await res.text()).not.toContain("tvly");
     expect(await failed.rows()).toHaveLength(0);
   });

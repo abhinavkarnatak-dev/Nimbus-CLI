@@ -5,6 +5,7 @@ import type { AppEnv } from "../env.js";
 import { apiError } from "../errors.js";
 import type { Logger } from "../log.js";
 import { responsesRequestSchema, upstreamBody, type ResponsesRequest } from "./request.js";
+import { fetchWithRetry } from "../retry.js";
 import { relay, type StreamEnd } from "./usage.js";
 
 export type CallEnd = StreamEnd | { kind: "client_left" };
@@ -24,6 +25,7 @@ export interface ProxyDeps {
   apiKey: string;
   maxOutputTokens: number;
   fetchUpstream: typeof fetch;
+  retryDelaysMs?: number[];
   log: Logger;
   onCallEnd: (report: CallReport) => void;
 }
@@ -76,16 +78,21 @@ export function responsesHandler(deps: ProxyDeps) {
 
     let upstream: Response;
     try {
-      upstream = await deps.fetchUpstream(`${deps.upstreamUrl}/responses`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${deps.apiKey}`,
-          "content-type": "application/json",
-          accept: "text/event-stream",
+      upstream = await fetchWithRetry(
+        deps.fetchUpstream,
+        `${deps.upstreamUrl}/responses`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${deps.apiKey}`,
+            "content-type": "application/json",
+            accept: "text/event-stream",
+          },
+          body,
+          signal,
         },
-        body,
-        signal,
-      });
+        deps.retryDelaysMs,
+      );
     } catch (error) {
       if (signal.aborted) {
         deps.log("info", "client left before the model answered", { model });
@@ -112,6 +119,8 @@ export function responsesHandler(deps: ProxyDeps) {
       if (upstream.status === 429) {
         return apiError(c, 503, "The model service is busy. Try again shortly.", "server_error");
       }
+      // Our key is broken, so retrying from the CLI cannot help
+      if (upstream.status === 401 || upstream.status === 403) c.header("x-should-retry", "false");
       return apiError(c, 502, "The model service returned an error.", "server_error");
     }
 

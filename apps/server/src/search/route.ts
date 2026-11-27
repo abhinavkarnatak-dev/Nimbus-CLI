@@ -5,6 +5,7 @@ import { recordSearch, searchesThisMonth } from "../db/ledger.js";
 import type { AppEnv } from "../env.js";
 import { apiError } from "../errors.js";
 import type { Logger } from "../log.js";
+import { fetchWithRetry } from "../retry.js";
 
 export const MAX_EXTRACT_CHARS = 1200;
 
@@ -28,6 +29,7 @@ export interface SearchDeps {
   baseUrl: string;
   monthlyLimit: number;
   fetchFn: typeof fetch;
+  retryDelaysMs?: number[];
   log: Logger;
   onCost: (cost: number) => void;
 }
@@ -39,6 +41,7 @@ const clip = (text: string) =>
 export function searchHandler(deps: SearchDeps) {
   return async (c: Context<AppEnv>) => {
     if (!deps.apiKey) {
+      c.header("x-should-retry", "false");
       return apiError(c, 503, "Web search is not configured on this server.", "server_error");
     }
     const parsed = searchSchema.safeParse(await c.req.json().catch(() => null));
@@ -46,6 +49,7 @@ export function searchHandler(deps: SearchDeps) {
       return apiError(c, 400, z.prettifyError(parsed.error), "invalid_request_error");
     }
     if ((await searchesThisMonth(deps.db)) >= deps.monthlyLimit) {
+      c.header("x-should-retry", "false");
       return apiError(c, 503, "Web search limit reached for this month.", "server_error");
     }
 
@@ -53,21 +57,26 @@ export function searchHandler(deps: SearchDeps) {
     const started = Date.now();
     let res: Response;
     try {
-      res = await deps.fetchFn(`${deps.baseUrl}/search`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${deps.apiKey}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          query,
-          topic,
-          search_depth: "basic",
-          max_results: maxResults,
-          time_range: recency,
-          include_answer: false,
-          include_raw_content: false,
-          include_published_date: true,
-        }),
-        signal: c.req.raw.signal,
-      });
+      res = await fetchWithRetry(
+        deps.fetchFn,
+        `${deps.baseUrl}/search`,
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${deps.apiKey}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            query,
+            topic,
+            search_depth: "basic",
+            max_results: maxResults,
+            time_range: recency,
+            include_answer: false,
+            include_raw_content: false,
+            include_published_date: true,
+          }),
+          signal: c.req.raw.signal,
+        },
+        deps.retryDelaysMs,
+      );
     } catch (error) {
       deps.log("error", "search service unreachable", { error: (error as Error).message });
       return apiError(c, 502, "Could not reach the search service.", "server_error");
@@ -82,9 +91,15 @@ export function searchHandler(deps: SearchDeps) {
       if (res.status === 400) {
         return apiError(c, 400, "The search request was not accepted.", "invalid_request_error");
       }
-      if (res.status === 429 || res.status === 432 || res.status === 433) {
-        return apiError(c, 503, "Web search is busy or out of credits.", "server_error");
+      if (res.status === 429) {
+        return apiError(c, 503, "Web search is busy. Try again shortly.", "server_error");
       }
+      if (res.status === 432 || res.status === 433) {
+        c.header("x-should-retry", "false");
+        return apiError(c, 503, "Web search is out of credits for now.", "server_error");
+      }
+      // Our key is broken, so retrying from the CLI cannot help
+      if (res.status === 401 || res.status === 403) c.header("x-should-retry", "false");
       return apiError(c, 502, "The search service returned an error.", "server_error");
     }
 

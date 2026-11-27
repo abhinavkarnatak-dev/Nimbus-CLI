@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEvent, settle, type Item } from "../src/ui/transcript.js";
+import { applyEvent, RESTARTED_NOTICE, settle, type Item } from "../src/ui/transcript.js";
 
 describe("transcript", () => {
   it("joins text deltas into one assistant item", () => {
@@ -57,6 +57,19 @@ describe("transcript", () => {
     const { done, live } = settle(applyEvent([], { type: "text_delta", text }));
     expect(done).toHaveLength(0);
     expect(live[0]).toMatchObject({ text });
+  });
+
+  it("starts a fresh reply below a half-shown one after a dropped connection", () => {
+    const retry = { attempt: 1, maxRetries: 5, delayMs: 1000, reason: "Connection lost" };
+    let items: Item[] = [];
+    items = applyEvent(items, { type: "retrying", ...retry, restarted: false });
+    expect(items).toEqual([]);
+    items = applyEvent(items, { type: "text_delta", text: "Hel" });
+    items = applyEvent(items, { type: "retrying", ...retry, restarted: true });
+    items = applyEvent(items, { type: "text_delta", text: "Hello" });
+    expect(items.map((item) => item.kind)).toEqual(["assistant", "notice", "assistant"]);
+    expect(items[1]).toMatchObject({ text: RESTARTED_NOTICE, tone: "info" });
+    expect(items[2]).toMatchObject({ text: "Hello" });
   });
 
   it("adds a notice when the turn is stopped", () => {

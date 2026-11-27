@@ -87,6 +87,37 @@ describe("App", () => {
     unmount();
   });
 
+  it("shows the retry countdown and then the reply", async () => {
+    const client = new FakeModelClient([
+      { error: "socket hang up", code: "ECONNRESET" },
+      { text: "back online" },
+    ]);
+    const createSession = () =>
+      new Session({
+        client,
+        model: "gpt-6-luna",
+        instructions: "test",
+        cwd: tmpdir(),
+        retryDelay: () => 1500,
+      });
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("hello");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Connection lost, retrying in 2s"));
+    expect(lastFrame()).toContain("attempt 1 of 5");
+    await waitFor(() => frames.join("\n").includes("back online"), 5000);
+    expect(lastFrame()).not.toContain("retrying");
+    unmount();
+  });
+
   it("clears the screen with Ctrl+L but keeps the conversation", async () => {
     let made = 0;
     const client = new FakeModelClient([{ text: "first answer" }, { text: "second answer" }]);

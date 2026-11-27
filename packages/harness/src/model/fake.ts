@@ -8,7 +8,7 @@ export interface FakeToolCall {
 export type FakeTurn =
   | { text: string; usage?: Partial<Usage> }
   | { toolCalls: FakeToolCall[]; text?: string; usage?: Partial<Usage> }
-  | { error: string; status?: number; code?: string };
+  | { error: string; status?: number; code?: string; partialText?: string };
 
 export class FakeModelClient implements ModelClient {
   readonly requests: ModelRequest[] = [];
@@ -25,6 +25,7 @@ export class FakeModelClient implements ModelClient {
     const turn = this.#turns.shift();
     if (!turn) throw new Error("FakeModelClient has no more turns");
     if ("error" in turn) {
+      if (turn.partialText) yield { type: "text_delta", text: turn.partialText };
       throw Object.assign(new Error(turn.error), { status: turn.status, code: turn.code });
     }
 
