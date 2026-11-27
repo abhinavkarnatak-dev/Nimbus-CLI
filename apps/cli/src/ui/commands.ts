@@ -6,6 +6,7 @@ export interface SlashCommand {
 export const COMMANDS: SlashCommand[] = [
   { name: "/help", description: "Show commands and shortcuts" },
   { name: "/clear", description: "Start a fresh conversation" },
+  { name: "/resume", description: "Open an earlier conversation from this folder" },
   { name: "/usage", description: "Show tokens and cost for this session" },
   { name: "/login", description: "Log in with Google, optionally with an invite code" },
   { name: "/logout", description: "Log out on this computer" },

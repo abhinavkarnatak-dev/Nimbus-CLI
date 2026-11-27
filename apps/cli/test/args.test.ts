@@ -37,4 +37,10 @@ describe("parseArgs", () => {
     expect(parseArgs(["use", "key"])).toMatchObject({ command: "use", action: "key" });
     expect(parseArgs(["use", "app"])).toMatchObject({ command: "use", folder: "app" });
   });
+
+  it("reads --resume and --continue anywhere", () => {
+    expect(parseArgs(["--resume"])).toMatchObject({ resume: "pick", folder: undefined });
+    expect(parseArgs(["app", "--continue"])).toMatchObject({ resume: "latest", folder: "app" });
+    expect(parseArgs(["app"])).not.toHaveProperty("resume");
+  });
 });

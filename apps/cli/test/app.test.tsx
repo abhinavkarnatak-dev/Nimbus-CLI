@@ -11,6 +11,7 @@ import { memorySecret } from "../src/auth/secrets.js";
 import { BillingController } from "../src/billing/controller.js";
 import { RoutingModelClient } from "../src/billing/router.js";
 import { memorySettings } from "../src/settings.js";
+import type { SavedSession, SessionHistory } from "../src/store/sqlite.js";
 import { App } from "../src/ui/App.js";
 
 const tick = (ms = 80) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -158,6 +159,88 @@ describe("App", () => {
     unmount();
   });
 
+  it("opens an earlier conversation with /resume and shows it again", async () => {
+    const saved: SavedSession = {
+      info: { id: "old", cwd: tmpdir(), model: "gpt-6-luna", title: "rename the helper" },
+      createdAt: 0,
+      updatedAt: Date.now() - 2 * 3_600_000,
+      turns: [
+        {
+          turn: 1,
+          status: "done",
+          items: [
+            { role: "user", content: "rename the helper" },
+            { role: "assistant", content: "Renamed it to formatDate." },
+          ],
+          views: [],
+          usage: { inputTokens: 10, cachedTokens: 0, outputTokens: 2 },
+          cost: 0,
+        },
+      ],
+    };
+    const sessions: SessionHistory = {
+      list: () => [{ id: "old", title: "rename the helper", updatedAt: saved.updatedAt, turns: 1 }],
+      load: (id) => (id === "old" ? saved : null),
+    };
+    const opened: (string | undefined)[] = [];
+    const createSession = (from?: SavedSession) => {
+      opened.push(from?.info.id);
+      return new Session({
+        client: new FakeModelClient([{ text: "Back again" }]),
+        model: "gpt-6-luna",
+        instructions: "test",
+        cwd: tmpdir(),
+        id: from?.info.id,
+      });
+    };
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        {...signedIn()}
+        sessions={sessions}
+      />,
+    );
+    await tick();
+    stdin.write("/resume");
+    await tick();
+    stdin.write("\r");
+    await tick();
+    expect(lastFrame()).toContain("Resume a conversation");
+    expect(lastFrame()).toContain("2 hours ago · 1 message");
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Renamed it to formatDate."));
+    write.mockRestore();
+    expect(opened).toEqual([undefined, "old"]);
+    expect(frames.join("\n")).toContain("Resumed this conversation from 2 hours ago.");
+    unmount();
+  });
+
+  it("says so when there is nothing to resume", async () => {
+    const { lastFrame, stdin, unmount } = render(
+      <App
+        createSession={() =>
+          new Session({
+            client: new FakeModelClient([]),
+            model: "gpt-6-luna",
+            instructions: "test",
+            cwd: tmpdir(),
+          })
+        }
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        {...signedIn()}
+        sessions={{ list: () => [], load: () => null }}
+      />,
+    );
+    await tick();
+    stdin.write("/resume");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("No earlier conversations in this folder."));
+    unmount();
+  });
+
   it("shows the command menu and runs /help", async () => {
     const createSession = () =>
       new Session({
@@ -190,6 +273,8 @@ describe("App", () => {
     expect(frames.join("\n")).toContain("Shortcuts");
 
     stdin.write("/");
+    await tick();
+    stdin.write("\u001B[B");
     await tick();
     stdin.write("\u001B[B");
     await tick();

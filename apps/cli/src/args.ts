@@ -6,6 +6,8 @@ export interface CliArgs {
   action?: string;
   inviteCode?: string;
   folder?: string;
+  // --resume opens the list, --continue the latest conversation
+  resume?: "pick" | "latest";
 }
 
 const COMMANDS: Command[] = ["login", "logout", "key", "use"];
@@ -14,7 +16,7 @@ const ACTIONS: Partial<Record<Command, string[]>> = {
   use: ["nimbus", "key"],
 };
 
-// nimbus [login|logout|key [set|remove]|use nimbus|key] [--code CODE] [folder]
+// nimbus [login|logout|key [set|remove]|use nimbus|key] [--code CODE] [--resume|--continue] [folder]
 export function parseArgs(args: string[]): CliArgs {
   const rest = [...args];
   const command = COMMANDS.includes(rest[0] as Command) ? (rest.shift() as Command) : null;
@@ -26,5 +28,21 @@ export function parseArgs(args: string[]): CliArgs {
     inviteCode = rest[codeAt + 1];
     rest.splice(codeAt, 2);
   }
-  return { command, ...(action ? { action } : {}), inviteCode, folder: rest[0] };
+  let resume: CliArgs["resume"];
+  for (const [flag, mode] of [
+    ["--resume", "pick"],
+    ["--continue", "latest"],
+  ] as const) {
+    const at = rest.indexOf(flag);
+    if (at < 0) continue;
+    resume = mode;
+    rest.splice(at, 1);
+  }
+  return {
+    command,
+    ...(action ? { action } : {}),
+    inviteCode,
+    folder: rest[0],
+    ...(resume ? { resume } : {}),
+  };
 }

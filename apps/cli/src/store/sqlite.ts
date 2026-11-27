@@ -61,8 +61,21 @@ export interface SavedSession {
   turns: SavedTurn[];
 }
 
-export interface SqliteSessionStore extends SessionStore {
+export interface SessionSummary {
+  id: string;
+  title: string;
+  updatedAt: number;
+  // Turns that made it into the conversation
+  turns: number;
+}
+
+// What the UI needs to list and reopen sessions
+export interface SessionHistory {
+  list(cwd: string, limit?: number): SessionSummary[];
   load(sessionId: string): SavedSession | null;
+}
+
+export interface SqliteSessionStore extends SessionStore, SessionHistory {
   close(): void;
 }
 
@@ -149,6 +162,22 @@ export function openSessionStore(path: string): SqliteSessionStore {
         );
         touch.run(now, sessionId);
       });
+    },
+
+    list(cwd: string, limit = 20): SessionSummary[] {
+      const rows = db
+        .prepare(
+          `SELECT s.id, s.title, s.updated_at,
+             (SELECT count(*) FROM turns t WHERE t.session_id = s.id AND t.status != 'failed') AS turns
+           FROM sessions s WHERE s.cwd = ? ORDER BY s.updated_at DESC LIMIT ?`,
+        )
+        .all(cwd, limit) as Record<string, string | number>[];
+      return rows.map((row) => ({
+        id: String(row.id),
+        title: String(row.title),
+        updatedAt: Number(row.updated_at),
+        turns: Number(row.turns),
+      }));
     },
 
     load(sessionId: string): SavedSession | null {

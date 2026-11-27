@@ -24,12 +24,13 @@ import { fileSettings } from "./settings.js";
 import { parseArgs } from "./args.js";
 import { resolveSetup, routeLabel } from "./connection.js";
 import { serverSearch } from "./search.js";
-import { openSessionStore, type SqliteSessionStore } from "./store/sqlite.js";
+import { openSessionStore, type SavedSession, type SqliteSessionStore } from "./store/sqlite.js";
+import { resumeStateFrom } from "./ui/resume.js";
 import { App } from "./ui/App.js";
 
 const MODEL = "gpt-6-luna";
 
-const { command, action, inviteCode, folder } = parseArgs(process.argv.slice(2));
+const { command, action, inviteCode, folder, resume } = parseArgs(process.argv.slice(2));
 if (folder) process.chdir(resolve(folder));
 
 const setup = resolveSetup();
@@ -122,7 +123,7 @@ try {
   console.error(`Sessions will not be saved: ${(error as Error).message}`);
 }
 
-const createSession = () =>
+const createSession = (saved?: SavedSession) =>
   new Session({
     client,
     model: MODEL,
@@ -132,7 +133,19 @@ const createSession = () =>
     shell,
     search,
     store: sessionStore,
+    id: saved?.info.id,
+    resume: saved ? resumeStateFrom(saved) : undefined,
   });
+
+// --continue opens the newest conversation in this folder
+let resumeOnStart: SavedSession | "pick" | undefined;
+if (resume === "pick") resumeOnStart = "pick";
+if (resume === "latest") {
+  const latest = sessionStore?.list(env.cwd).find((option) => option.turns > 0);
+  const saved = latest ? sessionStore?.load(latest.id) : null;
+  if (saved) resumeOnStart = saved;
+  else console.log("No earlier conversation in this folder. Starting a new one.");
+}
 
 const app = render(
   <App
@@ -148,6 +161,8 @@ const app = render(
     billing={billing}
     loginOnStart={command === "login"}
     inviteCode={inviteCode}
+    sessions={sessionStore}
+    resumeOnStart={resumeOnStart}
   />,
   {
     exitOnCtrlC: false,

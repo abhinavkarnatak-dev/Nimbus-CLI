@@ -13,19 +13,40 @@ import { BillingPanel, type BillingPanelState } from "./BillingPanel.js";
 import { LoginPanel, type LoginPhase } from "./LoginPanel.js";
 import { PromptInput } from "./PromptInput.js";
 import { CommandMenu, StatusBar, WorkingLine } from "./StatusBar.js";
+import type { SavedSession, SessionHistory } from "../store/sqlite.js";
+import { ResumePanel, type ResumePicker } from "./ResumePanel.js";
+import { timeAgo, transcriptFrom } from "./resume.js";
 import { applyEvent, newId, settle, type Item } from "./transcript.js";
 
 const FLUSH_MS = 50;
 const EXIT_WINDOW_MS = 2000;
 
 interface Props {
-  createSession: () => Session;
+  // With a saved session, continues it under the same id
+  createSession: (saved?: SavedSession) => Session;
   info: HeaderInfo;
   auth: AuthController;
   loginOnStart?: boolean;
   inviteCode?: string;
   // Picks Nimbus credit or the user's own key
   billing: BillingController;
+  // Saved conversations; missing when the store could not open
+  sessions?: SessionHistory;
+  // --continue passes a session, --resume opens the picker
+  resumeOnStart?: SavedSession | "pick";
+}
+
+function resumedItems(saved: SavedSession): Item[] {
+  return [
+    { kind: "header", id: newId() },
+    ...transcriptFrom(saved),
+    {
+      kind: "notice",
+      id: newId(),
+      text: `Resumed this conversation from ${timeAgo(saved.updatedAt)}.`,
+      tone: "info",
+    },
+  ];
 }
 
 function usageReport(usage: Usage, cost: number): string {
@@ -44,12 +65,18 @@ export function App({
   loginOnStart = false,
   inviteCode,
   billing,
+  sessions,
+  resumeOnStart,
 }: Props) {
   const { exit } = useApp();
+  const initial = typeof resumeOnStart === "object" ? resumeOnStart : undefined;
   const session = useRef<Session>(null as unknown as Session);
-  if (!session.current) session.current = createSession();
+  if (!session.current) session.current = createSession(initial);
 
-  const [done, setDone] = useState<Item[]>(() => [{ kind: "header", id: newId() }]);
+  const [done, setDone] = useState<Item[]>(() =>
+    initial ? resumedItems(initial) : [{ kind: "header", id: newId() }],
+  );
+  const [picker, setPicker] = useState<ResumePicker | null>(null);
   const [live, setLive] = useState<Item[]>([]);
   const [staticKey, setStaticKey] = useState(0);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -104,6 +131,44 @@ export function App({
     setDone([{ kind: "header", id: newId() }]);
     setStaticKey((key) => key + 1);
   }, []);
+
+  // Earlier conversations in this folder, newest first
+  const openPicker = useCallback(() => {
+    if (controller.current) {
+      notice("Wait for the reply to finish, or press esc to stop it, then /resume.");
+      return;
+    }
+    if (!sessions) {
+      notice("Saved conversations are not available on this computer.", "error");
+      return;
+    }
+    const options = sessions
+      .list(info.cwd)
+      .filter((option) => option.id !== session.current.id && option.turns > 0);
+    if (options.length === 0) {
+      notice("No earlier conversations in this folder.");
+      return;
+    }
+    setDraft(emptyDraft);
+    setPicker({ options, selected: 0 });
+  }, [info.cwd, notice, sessions]);
+
+  // Swap in a saved conversation and redraw it
+  const openSaved = useCallback(
+    (id: string) => {
+      const saved = sessions?.load(id);
+      if (!saved) {
+        notice("That conversation could not be opened.", "error");
+        return;
+      }
+      void session.current.dispose();
+      session.current = createSession(saved);
+      process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+      setDone(resumedItems(saved));
+      setStaticKey((key) => key + 1);
+    },
+    [createSession, notice, sessions],
+  );
 
   const quit = useCallback(async () => {
     controller.current?.abort();
@@ -259,6 +324,9 @@ export function App({
           clearScreen();
           return;
         }
+        case "/resume":
+          openPicker();
+          return;
         case "/login":
           void beginLogin(null, arg || undefined);
           return;
@@ -354,7 +422,18 @@ export function App({
           });
       }
     },
-    [append, auth, beginLogin, billing, clearScreen, createSession, notice, quit, switchRoute],
+    [
+      append,
+      auth,
+      beginLogin,
+      billing,
+      clearScreen,
+      createSession,
+      notice,
+      openPicker,
+      quit,
+      switchRoute,
+    ],
   );
 
   // Save a pasted key; a bad key keeps the old one
@@ -425,6 +504,14 @@ export function App({
     ],
   );
 
+  // nimbus --resume: show the list once, right away
+  const pickedOnStart = useRef(false);
+  useEffect(() => {
+    if (resumeOnStart !== "pick" || pickedOnStart.current) return;
+    pickedOnStart.current = true;
+    openPicker();
+  }, [resumeOnStart, openPicker]);
+
   // nimbus login: open the browser once, right away
   const loginStarted = useRef(false);
   useEffect(() => {
@@ -460,6 +547,20 @@ export function App({
   useInput((input, key) => {
     if (key.ctrl && input === "l") {
       clearScreen();
+      return;
+    }
+    if (picker) {
+      if (key.upArrow || key.downArrow) {
+        const step = key.upArrow ? -1 : 1;
+        const count = picker.options.length;
+        setPicker({ ...picker, selected: (picker.selected + step + count) % count });
+      } else if (key.return) {
+        const option = picker.options[picker.selected];
+        setPicker(null);
+        if (option) openSaved(option.id);
+      } else if (key.escape) {
+        setPicker(null);
+      }
       return;
     }
     if (panel.kind === "use") {
@@ -552,6 +653,7 @@ export function App({
       {runningSince !== null && <WorkingLine since={runningSince} />}
       <LoginPanel login={login} />
       <BillingPanel panel={panel} />
+      <ResumePanel picker={picker} />
       <Box marginTop={1} flexDirection="column">
         <PromptInput
           draft={draft}
@@ -564,7 +666,7 @@ export function App({
           onSelect={setMenuIndex}
           onBrowsingChange={setBrowsingHistory}
           mask={panel.kind === "key"}
-          active={panel.kind !== "use"}
+          active={panel.kind !== "use" && !picker}
         />
         {menu.length > 0 ? (
           <CommandMenu commands={menu} selected={selected} />

@@ -29,6 +29,13 @@ A browser tab opens to log in with Google. After that, start Nimbus in any proje
 pnpm nimbus <path to your project>
 ```
 
+Conversations are saved on your computer. Pick up an earlier one with `--resume`, or the latest one in that folder with `--continue`:
+
+```sh
+pnpm nimbus --resume <path to your project>
+pnpm nimbus --continue <path to your project>
+```
+
 ## Paying for model calls
 
 Invited accounts start with free Nimbus credit. You can also use your own OpenAI key: add it with `/key` inside Nimbus. The key stays on your computer and model calls go straight to OpenAI. Switch between the two with `/use`.
@@ -39,7 +46,7 @@ Type `/` inside Nimbus to see every command, or `/help` for the full list.
 
 - `Enter` sends, `Shift+Enter` or `Ctrl+J` adds a new line
 - `Esc` stops the current reply
-- `Ctrl+L` clears the screen, `/clear` starts a new conversation
+- `Ctrl+L` clears the screen, `/clear` starts a new conversation, `/resume` opens an earlier one
 - `Ctrl+C` twice quits
 
 ## License

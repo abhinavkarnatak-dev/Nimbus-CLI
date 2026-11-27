@@ -11,6 +11,14 @@ export {
   type TurnStatus,
 } from "./agent/store.js";
 export { STOPPED_NOTE, STOPPED_TOOL_OUTPUT } from "./agent/session.js";
+export {
+  closeTurn,
+  historyFromTurns,
+  INTERRUPTED_NOTE,
+  INTERRUPTED_TOOL_OUTPUT,
+  type ResumeState,
+  type SavedTurnItems,
+} from "./agent/resume.js";
 export { OpenAIModelClient, type OpenAIModelClientOptions } from "./model/openai.js";
 export { FakeModelClient, type FakeToolCall, type FakeTurn } from "./model/fake.js";
 export {

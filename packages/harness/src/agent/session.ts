@@ -14,6 +14,7 @@ import type { ShellInfo } from "../tools/shell.js";
 import { truncateOutput } from "../tools/truncate.js";
 import type { SearchFn, Tool, ToolContext, ToolResult } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
+import { closeTurn, type ResumeState } from "./resume.js";
 import type { SessionStore, ToolView, TurnStatus } from "./store.js";
 
 export const DEFAULT_MAX_STEPS = 25;
@@ -35,6 +36,8 @@ export interface SessionOptions {
   id?: string;
   // Saves every step so the session survives crashes and can be resumed
   store?: SessionStore;
+  // Continue a saved session; id must be the saved one
+  resume?: ResumeState;
 }
 
 function addUsage(total: Usage, usage: Usage): void {
@@ -88,6 +91,13 @@ export class Session {
     this.#shell = options.shell;
     this.#search = options.search;
     this.#store = options.store;
+    if (options.resume) {
+      this.#history.push(...options.resume.history);
+      this.#turn = options.resume.turns;
+      this.#title = options.resume.title;
+      addUsage(this.#usage, options.resume.usage);
+      this.#cost = options.resume.cost;
+    }
   }
 
   // A broken store must never break the conversation
@@ -245,7 +255,7 @@ export class Session {
     } catch (error) {
       if (signal?.aborted) {
         // Keep what already happened so the model knows about it
-        const closing = this.#closeStoppedTurn(turnItems);
+        const closing = closeTurn(turnItems, STOPPED_TOOL_OUTPUT, STOPPED_NOTE);
         turnItems.push(...closing);
         this.#saveItems(turn, closing);
         this.#history.push(...turnItems);
@@ -258,22 +268,6 @@ export class Session {
       yield* this.#storeWarning();
       yield { type: "error", message: errorMessage(error), ...errorDetails(error) };
     }
-  }
-
-  // Every call needs an output, then a note that the user stopped
-  #closeStoppedTurn(turnItems: HistoryItem[]): HistoryItem[] {
-    const answered = new Set(
-      turnItems.flatMap((item) => (item.type === "function_call_output" ? [item.call_id] : [])),
-    );
-    const missing: HistoryItem[] = turnItems
-      .filter(isFunctionCall)
-      .filter((call) => !answered.has(call.call_id))
-      .map((call) => ({
-        type: "function_call_output",
-        call_id: call.call_id,
-        output: STOPPED_TOOL_OUTPUT,
-      }));
-    return [...missing, { role: "user", content: STOPPED_NOTE }];
   }
 
   async #runTool(call: FunctionCallItem, ctx: ToolContext): Promise<ToolResult> {
