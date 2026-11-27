@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import picomatch from "picomatch";
 import { z } from "zod";
-import { resolveInside, toDisplayPath } from "./paths.js";
+import { resolveReadable, toDisplayPath } from "./paths.js";
 import { ALWAYS_EXCLUDED, BASE_RIPGREP_ARGS, runRipgrep } from "./ripgrep.js";
 import { defineTool } from "./types.js";
 
@@ -80,8 +80,9 @@ export const grepTool = defineTool({
   schema,
   // Search file contents with ripgrep
   async run({ pattern, path, glob, case_insensitive, output_mode }, ctx) {
-    const root = await realpath(ctx.cwd);
-    const target = path ? toDisplayPath(root, await resolveInside(ctx.cwd, path)) : ".";
+    const found = path ? await resolveReadable(ctx.cwd, path, ctx.outputDir) : null;
+    const root = found?.root ?? (await realpath(ctx.cwd));
+    const target = found ? toDisplayPath(root, found.path) : ".";
 
     const common = [...BASE_RIPGREP_ARGS, ...ALWAYS_EXCLUDED];
     if (case_insensitive) common.push("--ignore-case");

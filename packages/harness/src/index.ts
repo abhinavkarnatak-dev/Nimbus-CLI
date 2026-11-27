@@ -90,7 +90,7 @@ export { readFileTool } from "./tools/read-file.js";
 export { detectShell, type ShellInfo } from "./tools/shell.js";
 export { writeFileTool } from "./tools/write-file.js";
 export { webSearchTool } from "./tools/web-search.js";
-export { truncateOutput } from "./tools/truncate.js";
+export { MAX_TOOL_OUTPUT, truncateOutput } from "./tools/truncate.js";
 
 import { bashOutputTool, bashTool, killProcessTool } from "./tools/bash.js";
 import { editTool } from "./tools/edit.js";

@@ -70,3 +70,25 @@ export async function resolveForWrite(cwd: string, path: string): Promise<WriteT
     }
   }
 }
+
+// Nimbus's saved outputs are readable too
+export async function resolveReadable(
+  cwd: string,
+  path: string,
+  outputDir?: string,
+): Promise<{ root: string; path: string }> {
+  try {
+    return { root: await realpath(cwd), path: await resolveInside(cwd, path) };
+  } catch (error) {
+    if (!outputDir || !isAbsolute(path)) throw error;
+    let root: string;
+    try {
+      root = await realpath(outputDir);
+    } catch {
+      throw error;
+    }
+    const real = await realpath(path).catch(() => null);
+    if (!real || !isInside(root, real)) throw error;
+    return { root, path: real };
+  }
+}

@@ -24,6 +24,7 @@ import { fileSettings } from "./settings.js";
 import { parseArgs } from "./args.js";
 import { resolveSetup, routeLabel } from "./connection.js";
 import { serverSearch } from "./search.js";
+import { cleanOutputs } from "./store/outputs.js";
 import { openSessionStore, type SavedSession, type SqliteSessionStore } from "./store/sqlite.js";
 import { resumeStateFrom } from "./ui/resume.js";
 import { App } from "./ui/App.js";
@@ -118,9 +119,12 @@ const instructions = buildSystemPrompt(
 );
 
 // Sessions are saved locally; Nimbus still works if the file cannot be opened
+const dataDir = join(homedir(), ".nimbus");
+const outputDir = join(dataDir, "outputs");
+void cleanOutputs(outputDir);
 let sessionStore: SqliteSessionStore | undefined;
 try {
-  sessionStore = openSessionStore(join(homedir(), ".nimbus", "nimbus.db"));
+  sessionStore = openSessionStore(join(dataDir, "nimbus.db"));
 } catch (error) {
   console.error(`Sessions will not be saved: ${(error as Error).message}`);
 }
@@ -135,6 +139,7 @@ const createSession = (saved?: SavedSession) =>
     shell,
     search,
     store: sessionStore,
+    outputDir,
     id: saved?.info.id,
     resume: saved ? resumeStateFrom(saved) : undefined,
   });

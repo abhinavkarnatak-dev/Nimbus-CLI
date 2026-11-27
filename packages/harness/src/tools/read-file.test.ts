@@ -21,7 +21,7 @@ beforeAll(async () => {
   await writeFile(join(root, "crlf.txt"), "first\r\nsecond\r\n");
   await writeFile(
     join(root, "big.txt"),
-    Array.from({ length: 2500 }, (_, i) => `line ${i + 1}`).join("\n"),
+    Array.from({ length: 2500 }, (_, i) => `n${i + 1}`).join("\n"),
   );
   await writeFile(join(root, "long.txt"), "x".repeat(3000));
   await writeFile(join(root, "empty.txt"), "");
@@ -44,14 +44,18 @@ describe("read_file", () => {
     const result = await read(args("src/a.ts", 2, 1));
     expect(result.output).toContain("     2\ttwo");
     expect(result.output).not.toContain("three");
-    expect(result.output).toContain("File has 3 lines. Showing 2-2.");
+    expect(result.output).toContain(
+      "[Showed lines 2-2 of 3 to keep this short. To read more, call read_file with offset 3.]",
+    );
   });
 
   it("caps large files at 2000 lines with a note", async () => {
     const result = await read(args("big.txt"));
-    expect(result.output).toContain("  2000\tline 2000");
-    expect(result.output).not.toContain("line 2001");
-    expect(result.output).toContain("File has 2500 lines. Showing 1-2000.");
+    expect(result.output).toContain("  2000\tn2000");
+    expect(result.output).not.toContain("n2001");
+    expect(result.output).toContain(
+      "[Showed lines 1-2000 of 2,500 to keep this short. To read more, call read_file with offset 2001.]",
+    );
   });
 
   it("clips very long lines", async () => {

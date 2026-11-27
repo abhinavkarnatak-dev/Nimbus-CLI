@@ -30,6 +30,8 @@ export interface ToolContext {
   search?: SearchFn;
   // Copies of changed files, for undo_changes
   changes?: ChangeLog;
+  // Where full long outputs are saved; readable by read_file and grep
+  outputDir?: string;
 }
 
 export interface ToolResult {

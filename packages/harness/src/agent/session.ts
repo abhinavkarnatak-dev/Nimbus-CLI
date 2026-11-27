@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { costOf } from "../cost.js";
 import {
   emptyUsage,
@@ -12,7 +14,7 @@ import { ChangeLog } from "../tools/changes.js";
 import { FileTracker } from "../tools/file-state.js";
 import { ProcessManager } from "../tools/processes.js";
 import type { ShellInfo } from "../tools/shell.js";
-import { truncateOutput } from "../tools/truncate.js";
+import { MAX_TOOL_OUTPUT, truncateOutput } from "../tools/truncate.js";
 import type { SearchFn, Tool, ToolContext, ToolResult, ToolSpec } from "../tools/types.js";
 import { CONTEXT_LIMIT } from "../cost.js";
 import { contextParts, estimateItems, type ContextUsage } from "./context.js";
@@ -60,6 +62,8 @@ export interface SessionOptions {
   store?: SessionStore;
   // Continue a saved session; id must be the saved one
   resume?: ResumeState;
+  // Full long tool outputs go here, one folder per session
+  outputDir?: string;
   // Retries for a failed model call, never for tools
   maxRetries?: number;
   retryDelay?: (error: unknown, attempt: number) => number;
@@ -111,6 +115,7 @@ export class Session {
   readonly #shell: ShellInfo | undefined;
   readonly #search: SearchFn | undefined;
   readonly #store: SessionStore | undefined;
+  readonly #outputDir: string | undefined;
   #cost = 0;
   #turn = 0;
   #title = "";
@@ -137,6 +142,7 @@ export class Session {
     this.#shell = options.shell;
     this.#search = options.search;
     this.#store = options.store;
+    this.#outputDir = options.outputDir;
     this.#changes = new ChangeLog(
       (change) => this.#save((store) => store.saveFileChange(this.id, change)),
       options.resume?.fileChanges,
@@ -306,6 +312,7 @@ export class Session {
       processes: this.#processes,
       search: this.#search,
       changes: this.#changes,
+      outputDir: this.#outputDir,
     };
     const first = turnItems[0] as { content?: unknown } | undefined;
     this.#changes.begin(turn, typeof first?.content === "string" ? first.content : "");
@@ -356,7 +363,7 @@ export class Session {
           const outputItem: HistoryItem = {
             type: "function_call_output",
             call_id: call.call_id,
-            output: earlier ?? truncateOutput(result.output),
+            output: earlier ?? (await this.#shorten(call.call_id, result.output)),
           };
           this.#outputs.set(call.call_id, outputItem.output as string);
           turnItems.push(outputItem);
@@ -451,6 +458,24 @@ export class Session {
         await sleep(delayMs, signal);
       }
     }
+  }
+
+  // Long output: save it whole, show the start and end
+  async #shorten(callId: string, output: string): Promise<string> {
+    if (output.length <= MAX_TOOL_OUTPUT) return output;
+    let savedAt: string | null = null;
+    if (this.#outputDir) {
+      const folder = join(this.#outputDir, this.id);
+      const file = join(folder, `${callId.replace(/[^\w-]/g, "_")}.txt`);
+      try {
+        await mkdir(folder, { recursive: true });
+        await writeFile(file, output);
+        savedAt = file;
+      } catch {
+        // Not saved: the model is told the middle is gone
+      }
+    }
+    return truncateOutput(output, MAX_TOOL_OUTPUT, savedAt);
   }
 
   async #runTool(call: FunctionCallItem, ctx: ToolContext): Promise<ToolResult> {

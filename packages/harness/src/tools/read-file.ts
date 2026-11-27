@@ -1,7 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 import { z } from "zod";
 import { isBinary } from "./text.js";
-import { resolveInside } from "./paths.js";
+import { resolveReadable } from "./paths.js";
+import { MAX_TOOL_OUTPUT } from "./truncate.js";
 import { defineTool } from "./types.js";
 
 export const DEFAULT_READ_LINES = 2000;
@@ -44,7 +45,7 @@ Fails for binary files and for paths outside the working directory.`,
       throw new Error("offset must be a whole number >= 1");
     if (!Number.isInteger(count) || count < 1) throw new Error("limit must be a whole number >= 1");
 
-    const file = await resolveInside(ctx.cwd, path);
+    const { path: file } = await resolveReadable(ctx.cwd, path, ctx.outputDir);
     const info = await stat(file);
     if (info.isDirectory()) throw new Error(`${path} is a directory, not a file`);
     if (info.size > MAX_FILE_BYTES)
@@ -60,16 +61,27 @@ Fails for binary files and for paths outside the working directory.`,
       throw new Error(`offset ${start} is past the end of the file (${lines.length} lines)`);
     }
 
-    const end = Math.min(start - 1 + count, lines.length);
-    const body = lines
-      .slice(start - 1, end)
-      .map((line, i) => `${String(start + i).padStart(6)}\t${clipLine(line)}`)
-      .join("\n");
+    // Stop at a whole line once the output is long enough
+    const last = Math.min(start - 1 + count, lines.length);
+    const shown: string[] = [];
+    let size = 0;
+    for (let n = start; n <= last; n++) {
+      const row = `${String(n).padStart(6)}\t${clipLine(lines[n - 1]!)}`;
+      if (shown.length > 0 && size + row.length + 1 > MAX_TOOL_OUTPUT) break;
+      shown.push(row);
+      size += row.length + 1;
+    }
+    const end = start + shown.length - 1;
+    const body = shown.join("\n");
 
     const partial = start > 1 || end < lines.length;
-    const note = partial
-      ? `\n\n(File has ${lines.length} lines. Showing ${start}-${end}. Use offset and limit to read more.)`
-      : "";
+    const total = lines.length.toLocaleString("en-US");
+    const note =
+      end < lines.length
+        ? `\n\n[Showed lines ${start}-${end} of ${total} to keep this short. To read more, call read_file with offset ${end + 1}.]`
+        : partial
+          ? `\n\n(File has ${lines.length} lines. Showing ${start}-${end}.)`
+          : "";
     const summary = partial
       ? `lines ${start}-${end} of ${lines.length}`
       : `${lines.length} line${lines.length === 1 ? "" : "s"}`;
