@@ -1,5 +1,5 @@
-import { hostname } from "node:os";
-import { resolve } from "node:path";
+import { homedir, hostname } from "node:os";
+import { join, resolve } from "node:path";
 import {
   buildSystemPrompt,
   defaultTools,
@@ -24,6 +24,7 @@ import { fileSettings } from "./settings.js";
 import { parseArgs } from "./args.js";
 import { resolveSetup, routeLabel } from "./connection.js";
 import { serverSearch } from "./search.js";
+import { openSessionStore, type SqliteSessionStore } from "./store/sqlite.js";
 import { App } from "./ui/App.js";
 
 const MODEL = "gpt-6-luna";
@@ -113,8 +114,25 @@ const instructions = buildSystemPrompt(
   tools.map((tool) => tool.name),
 );
 
+// Sessions are saved locally; Nimbus still works if the file cannot be opened
+let sessionStore: SqliteSessionStore | undefined;
+try {
+  sessionStore = openSessionStore(join(homedir(), ".nimbus", "nimbus.db"));
+} catch (error) {
+  console.error(`Sessions will not be saved: ${(error as Error).message}`);
+}
+
 const createSession = () =>
-  new Session({ client, model: MODEL, instructions, cwd: env.cwd, tools, shell, search });
+  new Session({
+    client,
+    model: MODEL,
+    instructions,
+    cwd: env.cwd,
+    tools,
+    shell,
+    search,
+    store: sessionStore,
+  });
 
 const app = render(
   <App
@@ -139,3 +157,4 @@ const app = render(
 );
 
 await app.waitUntilExit();
+sessionStore?.close();

@@ -3,7 +3,8 @@ import { z } from "zod";
 import { FakeModelClient } from "../model/fake.js";
 import { defineTool } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
-import { Session } from "./session.js";
+import { Session, STOPPED_NOTE, STOPPED_TOOL_OUTPUT } from "./session.js";
+import { MemorySessionStore, type SessionStore } from "./store.js";
 
 async function collect(events: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
   const all: AgentEvent[] = [];
@@ -36,7 +37,7 @@ const slowTool = defineTool({
   },
 });
 
-function newSession(client: FakeModelClient, maxSteps?: number): Session {
+function newSession(client: FakeModelClient, maxSteps?: number, store?: SessionStore): Session {
   return new Session({
     client,
     model: "gpt-6-luna",
@@ -45,6 +46,7 @@ function newSession(client: FakeModelClient, maxSteps?: number): Session {
     tools: [echoTool, slowTool],
     maxSteps,
     id: "s1",
+    store,
   });
 }
 
@@ -139,7 +141,7 @@ describe("Session", () => {
     expect(session.history).toHaveLength(0);
   });
 
-  it("stops on abort and keeps history unchanged", async () => {
+  it("stops on abort and keeps the message with a note that the user stopped", async () => {
     const session = newSession(new FakeModelClient([{ text: "one two three four five" }]));
     const controller = new AbortController();
     const events: AgentEvent[] = [];
@@ -151,7 +153,10 @@ describe("Session", () => {
 
     expect(events.at(-1)).toEqual({ type: "turn_cancelled" });
     expect(textOf(events)).toBe("one ");
-    expect(session.history).toHaveLength(0);
+    expect(session.history).toEqual([
+      { role: "user", content: "hi" },
+      { role: "user", content: STOPPED_NOTE },
+    ]);
   });
 
   describe("tool loop", () => {
@@ -258,7 +263,7 @@ describe("Session", () => {
       });
     });
 
-    it("cancels a running tool and leaves history empty", async () => {
+    it("cancels a running tool and tells the model it may have partly run", async () => {
       const session = newSession(
         new FakeModelClient([{ toolCalls: [{ name: "slow", args: {} }] }]),
       );
@@ -271,7 +276,112 @@ describe("Session", () => {
       }
 
       expect(events.at(-1)).toEqual({ type: "turn_cancelled" });
+      expect(session.history).toEqual([
+        { role: "user", content: "wait" },
+        expect.objectContaining({ type: "function_call", call_id: "call_1", name: "slow" }),
+        { type: "function_call_output", call_id: "call_1", output: STOPPED_TOOL_OUTPUT },
+        { role: "user", content: STOPPED_NOTE },
+      ]);
+    });
+  });
+
+  describe("saving", () => {
+    it("saves every step, the tool view and how the turn ended", async () => {
+      const store = new MemorySessionStore();
+      const session = newSession(
+        new FakeModelClient([
+          { toolCalls: [{ name: "echo", args: { text: "hi" } }], usage: { inputTokens: 10 } },
+          { text: "All done", usage: { inputTokens: 20, outputTokens: 5 } },
+        ]),
+        undefined,
+        store,
+      );
+      await collect(session.send("  say hi  "));
+
+      const saved = store.sessions.get("s1")!;
+      expect(saved.info).toEqual({
+        id: "s1",
+        cwd: process.cwd(),
+        model: "gpt-6-luna",
+        title: "say hi",
+      });
+      const turn = saved.turns.get(1)!;
+      expect(turn.items).toEqual(session.history);
+      expect(turn.views).toEqual([
+        expect.objectContaining({ callId: "call_1", name: "echo", summary: "echoed" }),
+      ]);
+      expect(turn.status).toBe("done");
+      expect(turn.usage).toMatchObject({ inputTokens: 30, outputTokens: 5 });
+    });
+
+    it("has the finished steps on disk before the turn ends", async () => {
+      const store = new MemorySessionStore();
+      const session = newSession(
+        new FakeModelClient([{ toolCalls: [{ name: "slow", args: {} }] }]),
+        undefined,
+        store,
+      );
+      const controller = new AbortController();
+      let duringTool: unknown[] = [];
+      for await (const event of session.send("wait", controller.signal)) {
+        if (event.type === "tool_call_start") {
+          duringTool = [...store.sessions.get("s1")!.turns.get(1)!.items];
+          setTimeout(() => controller.abort(), 5);
+        }
+      }
+      expect(duringTool).toEqual([
+        { role: "user", content: "wait" },
+        expect.objectContaining({ type: "function_call", name: "slow" }),
+      ]);
+      const turn = store.sessions.get("s1")!.turns.get(1)!;
+      expect(turn.status).toBe("cancelled");
+      expect(turn.items).toEqual(session.history);
+    });
+
+    it("marks a failed turn and keeps history unchanged", async () => {
+      const store = new MemorySessionStore();
+      const session = newSession(new FakeModelClient([{ error: "boom" }]), undefined, store);
+      await collect(session.send("hi"));
       expect(session.history).toHaveLength(0);
+      expect(store.sessions.get("s1")!.turns.get(1)!.status).toBe("failed");
+    });
+
+    it("numbers turns and keeps the first message as the title", async () => {
+      const store = new MemorySessionStore();
+      const session = newSession(
+        new FakeModelClient([{ text: "one" }, { text: "two" }]),
+        undefined,
+        store,
+      );
+      await collect(session.send("first"));
+      await collect(session.send("second"));
+      const saved = store.sessions.get("s1")!;
+      expect([...saved.turns.keys()]).toEqual([1, 2]);
+      expect(saved.info.title).toBe("first");
+    });
+
+    it("keeps working when saving fails, and says so once", async () => {
+      const broken: SessionStore = {
+        saveItems: () => {
+          throw new Error("disk full");
+        },
+        saveToolView: () => {},
+        endTurn: () => {},
+      };
+      const session = newSession(
+        new FakeModelClient([{ text: "one" }, { text: "two" }]),
+        undefined,
+        broken,
+      );
+      const first = await collect(session.send("a"));
+      const second = await collect(session.send("b"));
+      expect(first.at(-1)?.type).toBe("turn_complete");
+      expect(first).toContainEqual({
+        type: "warning",
+        message: "This session is no longer being saved: disk full",
+      });
+      expect(second.some((event) => event.type === "warning")).toBe(false);
+      expect(session.history).toHaveLength(4);
     });
   });
 });

@@ -61,6 +61,7 @@ export function applyEvent(items: Item[], event: AgentEvent, now = Date.now()): 
     case "turn_cancelled":
       return [...items, { kind: "notice", id: newId(), text: "Stopped by you.", tone: "info" }];
     case "error":
+    case "warning":
       return [...items, { kind: "notice", id: newId(), text: event.message, tone: "error" }];
     case "turn_complete":
       return items;

@@ -2,6 +2,15 @@ export const HARNESS_VERSION = "0.0.0";
 
 export { DEFAULT_MAX_STEPS, Session, type SessionOptions } from "./agent/session.js";
 export type { AgentEvent } from "./agent/events.js";
+export {
+  MemorySessionStore,
+  type MemoryTurn,
+  type SessionInfo,
+  type SessionStore,
+  type ToolView,
+  type TurnStatus,
+} from "./agent/store.js";
+export { STOPPED_NOTE, STOPPED_TOOL_OUTPUT } from "./agent/session.js";
 export { OpenAIModelClient, type OpenAIModelClientOptions } from "./model/openai.js";
 export { FakeModelClient, type FakeToolCall, type FakeTurn } from "./model/fake.js";
 export {

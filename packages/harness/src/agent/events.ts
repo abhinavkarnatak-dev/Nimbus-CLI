@@ -15,4 +15,5 @@ export type AgentEvent =
     }
   | { type: "turn_complete"; usage: Usage; cost: number }
   | { type: "turn_cancelled" }
+  | { type: "warning"; message: string }
   | { type: "error"; message: string; status?: number; code?: string };
