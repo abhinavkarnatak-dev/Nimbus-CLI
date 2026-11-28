@@ -43,4 +43,10 @@ describe("parseArgs", () => {
     expect(parseArgs(["app", "--continue"])).toMatchObject({ resume: "latest", folder: "app" });
     expect(parseArgs(["app"])).not.toHaveProperty("resume");
   });
+
+  it("prints the version or the usage instead of starting", () => {
+    expect(parseArgs(["--version"]).info).toBe("version");
+    expect(parseArgs(["somewhere", "-h"]).info).toBe("help");
+    expect(parseArgs(["somewhere"]).info).toBeUndefined();
+  });
 });

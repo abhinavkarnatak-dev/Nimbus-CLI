@@ -19,7 +19,7 @@ Website: [nimbus.abhinavkarnatak.com](https://nimbus.abhinavkarnatak.com)
 ```sh
 git clone https://github.com/abhinavkarnatak-dev/Nimbus-CLI.git
 cd Nimbus-CLI
-pnpm install --filter "@nimbus/cli..."
+pnpm install --filter "@abhinavk-dev/nimbus..."
 pnpm nimbus login --code <your code>
 ```
 

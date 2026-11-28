@@ -21,6 +21,11 @@ next-env.d.ts
 coverage/
 *.tsbuildinfo
 
+# Copied into the CLI package by prepack
+apps/cli/README.md
+apps/cli/LICENSE
+*.tgz
+
 # Local data and logs
 .nimbus/
 *.log

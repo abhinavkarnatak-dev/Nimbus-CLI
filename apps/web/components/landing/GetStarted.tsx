@@ -12,7 +12,7 @@ const STEPS = [
   {
     title: "Install what the CLI needs",
     body: "Inside the Nimbus-CLI folder. This skips the website and server packages.",
-    command: 'pnpm install --filter "@nimbus/cli..."',
+    command: 'pnpm install --filter "@abhinavk-dev/nimbus..."',
   },
   {
     title: "Log in with your invite code",

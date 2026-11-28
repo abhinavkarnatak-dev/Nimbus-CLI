@@ -6,7 +6,6 @@ import {
   defaultTools,
   detectEnvironment,
   detectShell,
-  HARNESS_VERSION,
   loadProjectDocs,
   loadSkills,
   loadSkillTool,
@@ -18,6 +17,7 @@ import {
 import { render } from "ink";
 import open from "open";
 import { shownMessage } from "./ui/shown.js";
+import { VERSION } from "./version.js";
 import { ModelChoice } from "./model-choice.js";
 import { SwitchableModelClient } from "./auth/client.js";
 import { AuthController } from "./auth/controller.js";
@@ -28,7 +28,7 @@ import { BillingController } from "./billing/controller.js";
 import { RoutingModelClient } from "./billing/router.js";
 import { promptSecret } from "./prompt-secret.js";
 import { fileSettings } from "./settings.js";
-import { parseArgs } from "./args.js";
+import { parseArgs, USAGE } from "./args.js";
 import { resolveSetup, routeLabel } from "./connection.js";
 import { serverSearch } from "./search.js";
 import { Permissions } from "./permissions.js";
@@ -41,7 +41,11 @@ import { App } from "./ui/App.js";
 // The key check only needs a model every key can use
 const MODEL = DEFAULT_MODEL;
 
-const { command, action, inviteCode, folder, resume } = parseArgs(process.argv.slice(2));
+const { command, action, inviteCode, folder, resume, info } = parseArgs(process.argv.slice(2));
+if (info) {
+  console.log(info === "version" ? VERSION : USAGE);
+  process.exit(0);
+}
 if (folder) process.chdir(resolve(folder));
 
 const setup = resolveSetup();
@@ -189,7 +193,7 @@ const app = render(
   <App
     createSession={createSession}
     info={{
-      version: HARNESS_VERSION,
+      version: VERSION,
       model: models.model,
       shell: shell.name,
       cwd: env.cwd,
