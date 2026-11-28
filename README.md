@@ -57,6 +57,7 @@ Type `/` inside Nimbus to see every command, or `/help` for the full list.
 - Long conversations shrink by themselves when they get full; `/compact` does it now
 - Nimbus reads your project's `AGENTS.md` (or `CLAUDE.md`) every session; `/init` writes one for you
 - Tell Nimbus to remember something and it will know it next time; `/memory` shows what it remembers
+- Nimbus works in the folder you start it in. Give it the path of a file or folder anywhere else and it can read it too, after asking you first (it never changes files outside your folder)
 - Nimbus asks before it edits files or runs commands; `/permissions` or `Shift+Tab` lets it edit without asking, or stop asking (it still asks before git pushes, commits and anything touching secret files like `.env`, which it never reads)
 - `/model` picks the model (GPT-6.2 Astra, GPT-6.2 Sol, GPT-6.1 Terra, GPT-6 Luna and older ones) and how much it thinks before answering; your choice is saved
 - `/commit` writes a commit message for your staged changes and commits after you approve it (it never pushes)

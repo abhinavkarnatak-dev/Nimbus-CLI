@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type { ApprovalPrompt } from "../permissions.js";
+import { shortenPath } from "./format.js";
 import { theme } from "./theme.js";
 
 export interface ApprovalState {
@@ -70,7 +71,30 @@ export function fullPreview(prompt: ApprovalPrompt, max = PREVIEW_LINES): string
 
 // Title and the part of the action worth reading first
 function describe(prompt: ApprovalPrompt, max: number) {
-  const { tool, args } = prompt.request;
+  const { tool, args, folder } = prompt.request;
+  if (folder) {
+    const title =
+      tool === "grep"
+        ? "Search outside this folder"
+        : tool === "glob"
+          ? "List files outside this folder"
+          : "Read a file outside this folder";
+    const what =
+      tool === "read_file"
+        ? shortenPath(str(args.path))
+        : `"${str(args.pattern)}" in ${shortenPath(str(args.path))}`;
+    return {
+      title,
+      body: (
+        <>
+          <Text>{what}</Text>
+          <Text
+            color={theme.muted}
+          >{`Only reads; nothing is changed. Folder: ${shortenPath(folder)}`}</Text>
+        </>
+      ),
+    };
+  }
   if (tool === "edit") {
     const removed = clipLines(lines(str(args.old_string)), editLines(max));
     const added = clipLines(lines(str(args.new_string)), editLines(max));

@@ -1,4 +1,5 @@
 import type { ApprovalRequest } from "@nimbus/harness";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { commandKey, Permissions, type ApprovalPrompt } from "../src/permissions.js";
 import { memorySettings } from "../src/settings.js";
@@ -91,5 +92,34 @@ describe("Permissions", () => {
   it("passes the no through", async () => {
     const { permissions } = setup("ask", "no");
     expect(await permissions.approve(bash("rm a.txt"), signal)).toBe("deny");
+  });
+
+  it("asks before reading outside the folder, and remembers a folder with its subfolders", async () => {
+    const other = join("/elsewhere", "notes");
+    const read = (folder: string): ApprovalRequest => ({
+      tool: "read_file",
+      args: { path: join(folder, "a.md") },
+      callId: "r1",
+      folder,
+    });
+    const edits = setup("edits", "always");
+    expect(await edits.permissions.approve(read(other), signal)).toBe("allow");
+    expect(edits.asked).toHaveLength(1);
+    expect(edits.asked[0]!.remember).toContain("files in");
+    expect(await edits.permissions.approve(read(join(other, "deep")), signal)).toBe("allow");
+    expect(edits.asked).toHaveLength(1);
+    expect(await edits.permissions.approve(read(join("/elsewhere", "other")), signal)).toBe(
+      "allow",
+    );
+    expect(edits.asked).toHaveLength(2);
+    edits.permissions.resetSession();
+    await edits.permissions.approve(read(other), signal);
+    expect(edits.asked).toHaveLength(3);
+
+    const full = setup("full");
+    expect(await full.permissions.approve(read(other), signal)).toBe("allow");
+    expect(full.asked).toHaveLength(0);
+    const no = setup("ask", "no");
+    expect(await no.permissions.approve(read(other), signal)).toBe("deny");
   });
 });

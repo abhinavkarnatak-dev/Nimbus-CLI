@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { z } from "zod";
 import { isBinary } from "./text.js";
-import { readableDirs, resolveReadable } from "./paths.js";
+import { outsideFolder, readableDirs, resolveReadable } from "./paths.js";
 import { assertNotSecret } from "./secrets.js";
 import { MAX_TOOL_OUTPUT } from "./truncate.js";
 import { defineTool } from "./types.js";
@@ -36,8 +36,11 @@ numbers ("  42<TAB>code"). Reads up to 2000 lines by default.
 - offset: first line to read (1-based). Use null to start at line 1.
 - limit: number of lines to read. Use null for the default.
 For large files, find the right line with grep first, then read around it.
-Fails for binary files and for paths outside the working directory.`,
+Fails for binary files. A file outside the working directory can be read too: pass its
+full path, and the user is asked first.`,
   schema,
+  // Files outside the working folder need a yes
+  askFirst: ({ path }, ctx) => outsideFolder(ctx, path),
   // Read numbered lines of a file
   async run({ path, offset, limit }, ctx) {
     const start = offset ?? 1;

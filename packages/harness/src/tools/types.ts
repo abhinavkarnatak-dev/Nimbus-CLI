@@ -40,6 +40,8 @@ export interface ToolContext {
   skills?: readonly Skill[];
   // Personal skills folder; edit and write_file may change it
   skillsDir?: string;
+  // A folder outside cwd the user allowed for this one call
+  approvedDir?: string;
 }
 
 export interface ToolResult {
@@ -58,6 +60,8 @@ export interface ToolSpec {
 
 export interface Tool extends ToolSpec {
   needsApproval?: boolean;
+  // Asks only for some calls: returns the outside folder to ask about
+  askFirst?(rawArgs: string, ctx: ToolContext): Promise<string | null>;
   execute(rawArgs: string, ctx: ToolContext): Promise<ToolResult>;
 }
 
@@ -66,6 +70,7 @@ export interface ToolDefinition<Input> {
   description: string;
   // Changes files or runs commands, so the user may be asked first
   needsApproval?: boolean;
+  askFirst?(input: Input, ctx: ToolContext): Promise<string | null>;
   schema: z.ZodType<Input>;
   run(input: Input, ctx: ToolContext): Promise<ToolResult>;
 }
@@ -84,6 +89,18 @@ export function defineTool<Input>(definition: ToolDefinition<Input>): Tool {
     description: definition.description,
     needsApproval: definition.needsApproval,
     parameters,
+    ...(definition.askFirst
+      ? {
+          async askFirst(rawArgs: string, ctx: ToolContext) {
+            try {
+              const parsed = definition.schema.safeParse(JSON.parse(rawArgs));
+              return parsed.success ? await definition.askFirst!(parsed.data, ctx) : null;
+            } catch {
+              return null;
+            }
+          },
+        }
+      : {}),
     async execute(rawArgs, ctx) {
       let json: unknown;
       try {

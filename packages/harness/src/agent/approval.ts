@@ -3,6 +3,8 @@ export interface ApprovalRequest {
   tool: string;
   args: Record<string, unknown>;
   callId: string;
+  // Set when a read reaches outside the working folder
+  folder?: string;
 }
 
 export type ApprovalDecision = "allow" | "deny";

@@ -2,7 +2,14 @@ import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import picomatch from "picomatch";
 import { z } from "zod";
-import { resolveInside, toDisplayPath } from "./paths.js";
+import {
+  isInside,
+  outsideFolder,
+  readableDirs,
+  resolveReadable,
+  shownFrom,
+  toDisplayPath,
+} from "./paths.js";
 import { ALWAYS_EXCLUDED, BASE_RIPGREP_ARGS, runRipgrep } from "./ripgrep.js";
 import { defineTool } from "./types.js";
 
@@ -19,12 +26,14 @@ export const globTool = defineTool({
   description: `Find files by name pattern. Returns paths relative to the working directory,
 newest first, up to 200 results.
 - pattern: a glob such as "src/**/*.ts" or "**/package.json".
-- path: folder to search in. Use null for the whole working directory.
+- path: folder to search in. Use null for the whole working directory. A full path
+  outside the working directory works too: the user is asked first.
 - To match several names at once, use braces, for example
   "**/*.{test,spec}.{ts,js}" or "**/{tests,__tests__}/**".
 Respects .gitignore and always ignores node_modules and .git. Use this to find
 files, not to search inside them.`,
   schema,
+  askFirst: ({ path }, ctx) => outsideFolder(ctx, path),
   // List matching files, newest first
   async run({ pattern, path }, ctx) {
     const normalized = pattern.replaceAll("\\", "/");
@@ -32,9 +41,13 @@ files, not to search inside them.`,
       throw new Error("pattern must stay inside the working directory (no absolute paths or ..)");
     }
 
-    const root = await realpath(ctx.cwd);
-    const base = path ? await resolveInside(ctx.cwd, path) : root;
+    const cwdRoot = await realpath(ctx.cwd);
+    const found = path ? await resolveReadable(ctx.cwd, path, readableDirs(ctx)) : null;
+    const base = found?.path ?? cwdRoot;
     if (!(await stat(base)).isDirectory()) throw new Error(`${path} is not a directory`);
+    // Outside the working folder: search from that folder, show full paths
+    const root = isInside(cwdRoot, base) ? cwdRoot : base;
+    const show = shownFrom(root, cwdRoot);
     const target = toDisplayPath(root, base);
 
     // Match ourselves: ripgrep --glob would override .gitignore
@@ -60,7 +73,7 @@ files, not to search inside them.`,
         return { file, mtime: info?.mtimeMs ?? 0 };
       }),
     );
-    const files = withTimes.sort((a, b) => b.mtime - a.mtime).map((entry) => entry.file);
+    const files = withTimes.sort((a, b) => b.mtime - a.mtime).map((entry) => show(entry.file));
 
     const shown = files.slice(0, MAX_GLOB_RESULTS);
     const total = run.more ? `more than ${files.length}` : String(files.length);

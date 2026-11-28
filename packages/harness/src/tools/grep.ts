@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import picomatch from "picomatch";
 import { z } from "zod";
-import { readableDirs, resolveReadable, toDisplayPath } from "./paths.js";
+import { outsideFolder, readableDirs, resolveReadable, shownFrom, toDisplayPath } from "./paths.js";
 import { assertNotSecret, isSecretPath } from "./secrets.js";
 import { ALWAYS_EXCLUDED, BASE_RIPGREP_ARGS, runRipgrep } from "./ripgrep.js";
 import { defineTool } from "./types.js";
@@ -73,16 +73,21 @@ export const grepTool = defineTool({
   description: `Search inside files with a regular expression (ripgrep syntax). Respects
 .gitignore. Returns up to 200 results.
 - pattern: the regex, for example "function \\w+Session" or "TODO".
-- path: file or folder to search. Use null for the whole working directory.
+- path: file or folder to search. Use null for the whole working directory. A full path
+  outside the working directory works too: the user is asked first.
 - glob: only search files matching this, for example "*.ts". Use null for all.
 - case_insensitive: true to ignore case. Use null for false.
 - output_mode: "files" lists matching file paths (use this first to see where
   something is), "content" shows matching lines with line numbers.`,
   schema,
+  askFirst: ({ path }, ctx) => outsideFolder(ctx, path),
   // Search file contents with ripgrep
   async run({ pattern, path, glob, case_insensitive, output_mode }, ctx) {
     const found = path ? await resolveReadable(ctx.cwd, path, readableDirs(ctx)) : null;
-    const root = found?.root ?? (await realpath(ctx.cwd));
+    const cwdRoot = await realpath(ctx.cwd);
+    const root = found?.root ?? cwdRoot;
+    // Paths outside the working folder are shown in full
+    const show = shownFrom(root, cwdRoot);
     const target = found ? toDisplayPath(root, found.path) : ".";
     if (found) assertNotSecret(found.path, path!);
 
@@ -121,7 +126,11 @@ export const grepTool = defineTool({
       return { output: `No matches for "${pattern}".`, summary: "0 matches" };
     }
 
-    const lines = run.lines.map((line) => line.replace("\0", ":"));
+    const lines = run.lines.map((line) => {
+      if (output_mode === "files") return show(line);
+      const [file = "", rest = ""] = line.split("\0");
+      return `${show(file)}:${rest}`;
+    });
     const unit = output_mode === "files" ? "files" : "matches";
     if (!run.more) {
       const one = lines.length === 1;

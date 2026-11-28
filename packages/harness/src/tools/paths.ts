@@ -1,6 +1,6 @@
-import { mkdir, realpath } from "node:fs/promises";
+import { mkdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 function normalizeCase(path: string): string {
   return process.platform === "win32" ? path.toLowerCase() : path;
@@ -112,8 +112,8 @@ export async function resolveReadable(
     return { root: await realpath(cwd), path: await resolveInside(cwd, path) };
   } catch (error) {
     const dirs = present(typeof extra === "string" ? [extra] : (extra ?? []));
-    const full = expandHome(path);
-    if (dirs.length === 0 || !isAbsolute(full)) throw error;
+    if (dirs.length === 0) throw error;
+    const full = resolve(await realpath(cwd), expandHome(path));
     const real = await realpath(full).catch(() => null);
     if (!real) throw error;
     for (const dir of dirs) {
@@ -128,9 +128,43 @@ export async function resolveReadable(
 export function readableDirs(ctx: {
   outputDir?: string;
   skillsDir?: string;
+  approvedDir?: string;
   skills?: readonly { folder: string | null }[];
 }): (string | null | undefined)[] {
-  return [ctx.outputDir, ctx.skillsDir, ...(ctx.skills ?? []).map((skill) => skill.folder)];
+  return [
+    ctx.outputDir,
+    ctx.skillsDir,
+    ctx.approvedDir,
+    ...(ctx.skills ?? []).map((skill) => skill.folder),
+  ];
+}
+
+// The folder outside cwd a read would reach, or null when no need to ask
+export async function outsideFolder(
+  ctx: Parameters<typeof readableDirs>[0] & { cwd: string },
+  path: string | null,
+): Promise<string | null> {
+  if (!path) return null;
+  const root = await realpath(ctx.cwd);
+  const full = resolve(root, expandHome(path));
+  const real = await realpath(full).catch(() => full);
+  if (isInside(root, real)) return null;
+  for (const dir of present(readableDirs(ctx))) {
+    const base = await realpath(dir).catch(() => null);
+    if (base && isInside(base, real)) return null;
+  }
+  const info = await stat(real).catch(() => null);
+  return info?.isDirectory() ? real : dirname(real);
+}
+
+// Outside cwd: a full path, ~ for the home folder
+export function shownFrom(root: string, cwdRoot: string): (file: string) => string {
+  if (root === cwdRoot) return (file) => file;
+  const home = homedir();
+  return (file) => {
+    const full = join(root, file);
+    return isInside(home, full) ? `~/${toDisplayPath(home, full)}` : full.split(sep).join("/");
+  };
 }
 
 // An existing file to edit, in cwd or an extra folder

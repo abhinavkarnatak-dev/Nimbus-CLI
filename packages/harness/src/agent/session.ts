@@ -189,6 +189,8 @@ export class Session {
   #current: HistoryItem[] | null = null;
   // Size the API reported after the last call, and how many items it covered
   #mark: { tokens: number; items: number; exact: boolean } | null = null;
+  // Outside folders the user allowed, by call id
+  readonly #approvedDirs = new Map<string, string>();
   // Outputs by call id, so a call never runs twice
   readonly #outputs = new Map<string, string>();
 
@@ -811,7 +813,13 @@ export class Session {
   // Ask the user before a tool that changes something
   async #approved(call: FunctionCallItem, ctx: ToolContext): Promise<boolean> {
     const tool = this.#tools.get(call.name);
-    if (!tool?.needsApproval || !this.#approve) return true;
+    if (!tool || !this.#approve) return true;
+    // Reads ask only when they reach outside the working folder
+    let folder: string | null = null;
+    if (!tool.needsApproval) {
+      folder = tool.askFirst ? await tool.askFirst(call.arguments, ctx) : null;
+      if (!folder) return true;
+    }
     let args: Record<string, unknown> = {};
     try {
       args = JSON.parse(call.arguments) as Record<string, unknown>;
@@ -819,10 +827,11 @@ export class Session {
       // The tool itself reports bad arguments
     }
     const decision = await this.#approve(
-      { tool: call.name, args, callId: call.call_id },
+      { tool: call.name, args, callId: call.call_id, ...(folder ? { folder } : {}) },
       ctx.signal,
     );
     ctx.signal.throwIfAborted();
+    if (decision === "allow" && folder) this.#approvedDirs.set(call.call_id, folder);
     return decision === "allow";
   }
 
@@ -973,6 +982,9 @@ export class Session {
         isError: true,
       };
     }
-    return tool.execute(call.arguments, ctx);
+    // An allowed outside folder counts for this call only
+    const approvedDir = this.#approvedDirs.get(call.call_id);
+    this.#approvedDirs.delete(call.call_id);
+    return tool.execute(call.arguments, approvedDir ? { ...ctx, approvedDir } : ctx);
   }
 }
