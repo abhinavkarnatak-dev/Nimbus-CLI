@@ -1,10 +1,27 @@
 import type { Metadata } from "next";
 import { LongPage } from "@/components/LongPage";
-import { CONTACT_URL } from "@/lib/site";
+import { CONTACT_URL, OG_IMAGE } from "@/lib/site";
+
+const description = "What Nimbus collects, why, and who it is shared with.";
 
 export const metadata: Metadata = {
   title: "Privacy",
-  description: "What Nimbus collects, why, and who it is shared with.",
+  description,
+  alternates: { canonical: "/privacy" },
+  openGraph: {
+    type: "website",
+    images: [OG_IMAGE],
+    siteName: "Nimbus",
+    url: "/privacy",
+    title: "Privacy - Nimbus",
+    description,
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: [OG_IMAGE],
+    title: "Privacy - Nimbus",
+    description,
+  },
 };
 
 export default function Privacy() {

@@ -20,8 +20,26 @@
   color: var(--storm);
 }
 
+/* About eight rows show; the rest scroll inside */
+.scroller {
+  margin-top: clamp(3rem, 8vh, 5rem);
+  max-height: min(36rem, 70vh);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 5rem), transparent);
+}
+
+.scroller[data-end] {
+  mask-image: none;
+}
+
+.scroller:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 6px;
+}
+
 .list {
-  margin: clamp(3rem, 8vh, 5rem) 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
   border-top: 1px solid color-mix(in srgb, var(--storm) 25%, transparent);

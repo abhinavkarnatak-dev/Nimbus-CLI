@@ -6,15 +6,23 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Cursor } from "@/components/motion/Cursor";
 import { SmoothScroll } from "@/components/motion/SmoothScroll";
-import { SITE_URL } from "@/lib/site";
+import { SITE_DESCRIPTION, SITE_TITLE, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "Nimbus", template: "%s - Nimbus" },
-  description:
-    "An AI agent that lives in your terminal. Ask it anything: it searches the web, works through your files, runs commands and writes the code.",
-  openGraph: { type: "website", siteName: "Nimbus", url: SITE_URL },
-  twitter: { card: "summary_large_image" },
+  title: { default: SITE_TITLE, template: "%s - Nimbus" },
+  description: SITE_DESCRIPTION,
+  applicationName: "Nimbus",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "Nimbus",
+    locale: "en_US",
+    url: "/",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: { card: "summary_large_image", title: SITE_TITLE, description: SITE_DESCRIPTION },
 };
 
 export const viewport: Viewport = {

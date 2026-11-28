@@ -4,6 +4,7 @@ import { Notice } from "@/components/Notice";
 export const metadata: Metadata = {
   title: "Logged in",
   robots: { index: false },
+  alternates: { canonical: null },
 };
 
 export default function LoggedIn() {

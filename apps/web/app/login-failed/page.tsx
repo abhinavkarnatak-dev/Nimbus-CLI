@@ -7,6 +7,7 @@ import { LoginFailed } from "./LoginFailed";
 export const metadata: Metadata = {
   title: "Login failed",
   robots: { index: false },
+  alternates: { canonical: null },
 };
 
 export default function LoginFailedPage() {

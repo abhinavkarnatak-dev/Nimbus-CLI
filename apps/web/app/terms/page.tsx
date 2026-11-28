@@ -1,10 +1,27 @@
 import type { Metadata } from "next";
 import { LongPage } from "@/components/LongPage";
-import { CONTACT_URL } from "@/lib/site";
+import { CONTACT_URL, OG_IMAGE } from "@/lib/site";
+
+const description = "The rules for using Nimbus.";
 
 export const metadata: Metadata = {
   title: "Terms",
-  description: "The rules for using Nimbus.",
+  description,
+  alternates: { canonical: "/terms" },
+  openGraph: {
+    type: "website",
+    images: [OG_IMAGE],
+    siteName: "Nimbus",
+    url: "/terms",
+    title: "Terms - Nimbus",
+    description,
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: [OG_IMAGE],
+    title: "Terms - Nimbus",
+    description,
+  },
 };
 
 export default function Terms() {
