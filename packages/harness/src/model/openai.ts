@@ -113,7 +113,7 @@ export class OpenAIModelClient implements ModelClient {
     const stream = await this.#client.responses.create(
       {
         model: request.model,
-        instructions: request.instructions,
+        ...(request.instructions ? { instructions: request.instructions } : {}),
         input: request.input,
         tools: request.tools?.map((tool) => ({
           type: "function" as const,

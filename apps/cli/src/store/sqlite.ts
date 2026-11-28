@@ -7,6 +7,7 @@ import type {
   ModelCall,
   SessionInfo,
   SessionStore,
+  TitleSource,
   ToolView,
   TurnStatus,
   Usage,
@@ -68,6 +69,8 @@ const MIGRATIONS = [
      items TEXT NOT NULL,
      created_at INTEGER NOT NULL
    );`,
+  // Who named the session, so a real title is never replaced
+  "ALTER TABLE sessions ADD COLUMN title_source TEXT NOT NULL DEFAULT 'first';",
 ];
 
 export interface SavedTurn {
@@ -83,6 +86,7 @@ export interface SavedTurn {
 
 export interface SavedSession {
   info: SessionInfo;
+  titleSource?: TitleSource;
   createdAt: number;
   updatedAt: number;
   turns: SavedTurn[];
@@ -106,6 +110,7 @@ export interface SessionHistory {
 }
 
 export interface SqliteSessionStore extends SessionStore, SessionHistory {
+  saveTitle(sessionId: string, title: string, source: TitleSource): void;
   close(): void;
 }
 
@@ -151,6 +156,7 @@ export function openSessionStore(path: string): SqliteSessionStore {
        output_tokens = ?, cost = ?, ended_at = ? WHERE session_id = ? AND turn = ?`,
   );
   const touch = db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?");
+  const setTitle = db.prepare("UPDATE sessions SET title = ?, title_source = ? WHERE id = ?");
   const addCompaction = db.prepare(
     "INSERT INTO compactions (session_id, turn, items, created_at) VALUES (?, ?, ?, ?)",
   );
@@ -224,6 +230,10 @@ export function openSessionStore(path: string): SqliteSessionStore {
       addCompaction.run(sessionId, turn, JSON.stringify(items), Date.now());
     },
 
+    saveTitle(sessionId: string, title: string, source: TitleSource) {
+      setTitle.run(title, source, sessionId);
+    },
+
     saveModelCall(sessionId: string, call: ModelCall) {
       addEntry.run(sessionId, call.turn, "call", JSON.stringify(call), Date.now());
     },
@@ -270,6 +280,7 @@ export function openSessionStore(path: string): SqliteSessionStore {
           model: String(row.model),
           title: String(row.title),
         },
+        titleSource: String(row.title_source) as TitleSource,
         createdAt: Number(row.created_at),
         updatedAt: Number(row.updated_at),
         turns: turns.map((t) => {

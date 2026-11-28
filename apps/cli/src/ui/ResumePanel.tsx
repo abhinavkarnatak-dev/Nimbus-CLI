@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import type { SessionSummary } from "../store/sqlite.js";
 import { timeAgo } from "./resume.js";
+import { shownTitle } from "./commands.js";
 import { theme } from "./theme.js";
 
 export interface ResumePicker {
@@ -41,7 +42,7 @@ export function ResumePanel({ picker }: { picker: ResumePicker | null }) {
           <Text key={option.id} wrap="truncate-end">
             <Text color={theme.accent}>{active ? "› " : "  "}</Text>
             <Text color={active ? theme.accent : "white"} bold={active}>
-              {clip(option.title, 56).padEnd(56)}
+              {clip(shownTitle(option.title), 56).padEnd(56)}
             </Text>
             <Text color={theme.muted}>
               {"  "}

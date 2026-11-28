@@ -4,7 +4,6 @@ import {
   historyFromTurns,
   INTERRUPTED_NOTE,
   isFunctionCall,
-  parseSkillRequest,
   withToolViews,
   STOPPED_NOTE,
   VERIFY_REMINDER,
@@ -12,7 +11,7 @@ import {
   type ResumeState,
 } from "@nimbus/harness";
 import type { SavedSession } from "../store/sqlite.js";
-import { INIT_REQUEST, parseCommitRequest } from "./commands.js";
+import { INIT_REQUEST, shownMessage } from "./commands.js";
 import { CHECK_NOTICE, newId, type Item } from "./transcript.js";
 
 const STOPPED_BY_ERROR = "This reply stopped because of an error.";
@@ -48,6 +47,7 @@ export function resumeStateFrom(saved: SavedSession): ResumeState {
     usage,
     cost: saved.turns.reduce((sum, turn) => sum + turn.cost, 0),
     fileChanges: saved.fileChanges,
+    titled: saved.titleSource !== undefined && saved.titleSource !== "first",
     calls: saved.turns.flatMap((turn) => withToolViews(turn.calls ?? [], turn.views)),
     commandTurns: saved.turns
       .filter((turn) => turn.views.some((view) => view.name === "bash"))
@@ -98,7 +98,7 @@ export function transcriptFrom(saved: SavedSession): Item[] {
         items.push({
           kind: "user",
           id: newId(),
-          text: parseSkillRequest(text) ?? parseCommitRequest(text) ?? text,
+          text: shownMessage(text),
         });
       } else {
         items.push({ kind: "assistant", id: newId(), text });

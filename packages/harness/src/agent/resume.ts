@@ -25,6 +25,8 @@ export interface ResumeState {
   commandTurns?: number[];
   // Saved model calls, for /trace
   calls?: ModelCall[];
+  // The title came from the model or the user, not the first message
+  titled?: boolean;
 }
 
 export interface SavedTurnItems {

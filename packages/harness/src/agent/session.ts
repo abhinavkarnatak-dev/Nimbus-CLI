@@ -25,6 +25,7 @@ import {
   pruneTargets,
   removedOutputNote,
   replyText,
+  SUMMARY_PREFIX,
   summaryItem,
 } from "./compact.js";
 import { DECLINED_NOTE, SKIPPED_NOTE, type ApproveFn } from "./approval.js";
@@ -33,6 +34,7 @@ import { contextParts, estimateItems, estimateTokens, type ContextUsage } from "
 import type { Skill } from "../prompt/skills.js";
 import type { ReasoningEffort } from "../models.js";
 import type { ModelCall } from "./trace.js";
+import { parseTitle, TITLE_MESSAGES, TITLE_MODEL, titleRequest } from "./title.js";
 import type { MemoryBook } from "../tools/remember.js";
 import { todosFrom, type Todo } from "../tools/todos.js";
 import type { AgentEvent } from "./events.js";
@@ -40,6 +42,7 @@ import {
   closeTurn,
   ERROR_NOTE,
   ERROR_TOOL_OUTPUT,
+  INTERRUPTED_NOTE,
   openCallOutputs,
   type ResumeState,
 } from "./resume.js";
@@ -64,6 +67,9 @@ export const STOPPED_TOOL_OUTPUT =
 // Seen by the model when the user stopped at the budget pause
 export const BUDGET_NOTE =
   "[This reply was paused before it finished because the session reached the spending limit the user set with /budget, and the user chose not to continue it. Anything done before the pause did happen, so check before repeating it.]";
+
+// Notes Nimbus adds as user messages; never part of a title
+const NOTES = new Set([STOPPED_NOTE, BUDGET_NOTE, ERROR_NOTE, INTERRUPTED_NOTE, VERIFY_REMINDER]);
 
 // Shown when every retry failed to reach the server
 export const CONNECTION_FAILED =
@@ -93,6 +99,10 @@ export interface SessionOptions {
   memory?: MemoryBook;
   // Reasoning level sent with every call; left out uses the model's default
   effort?: ReasoningEffort;
+  // What the user typed, for a message Nimbus wrote for them (like /init)
+  describeMessage?: (text: string) => string;
+  // makeTitle asks the model for a title; off unless set
+  titles?: boolean;
   // Skills listed in the system prompt, for load_skill
   skills?: readonly Skill[];
   // Personal skills folder, writable outside cwd
@@ -165,6 +175,13 @@ export class Session {
   #cost = 0;
   #turn = 0;
   #title = "";
+  // Set by the model or the user; never replaced after that
+  #titled = false;
+  #titling = false;
+  readonly #titles: boolean;
+  // What the user typed, for the title
+  readonly #asked: string[] = [];
+  readonly #describe: (text: string) => string;
   #storeError: string | null = null;
   #storeErrorShown = false;
   #pending: TurnState | null = null;
@@ -180,6 +197,14 @@ export class Session {
     this.#model = options.model;
     this.#effort = options.effort ?? null;
     this.#calls = [...(options.resume?.calls ?? [])];
+    this.#describe = options.describeMessage ?? ((text) => text);
+    this.#titles = options.titles ?? false;
+    for (const item of options.resume?.history ?? []) {
+      const content = (item as { role?: string; content?: unknown }).content;
+      if ((item as { role?: string }).role !== "user" || typeof content !== "string") continue;
+      if (NOTES.has(content) || content.startsWith(SUMMARY_PREFIX)) continue;
+      this.#asked.push(this.#describe(content).trim());
+    }
     this.cwd = options.cwd;
     this.#client = options.client;
     this.#instructions = options.instructions;
@@ -206,6 +231,7 @@ export class Session {
       this.#history.push(...options.resume.history);
       this.#turn = options.resume.turns;
       this.#title = options.resume.title;
+      this.#titled = options.resume.titled ?? false;
       addUsage(this.#usage, options.resume.usage);
       this.#cost = options.resume.cost;
       for (const item of options.resume.history) {
@@ -279,6 +305,73 @@ export class Session {
     if (model !== this.#model) this.forgetReasoning();
     this.#model = model;
     this.#effort = effort;
+  }
+
+  get title(): string {
+    return this.#title;
+  }
+
+  // The user's own name for this conversation
+  rename(title: string): void {
+    this.#title = title.trim();
+    this.#titled = true;
+    this.#save((store) => store.saveTitle?.(this.id, this.#title, "user"));
+  }
+
+  // Ask a small model for a title once there is something to name
+  async makeTitle(signal?: AbortSignal): Promise<string | null> {
+    if (!this.#titles || this.#titled || this.#titling || this.#asked.length === 0) return null;
+    if (this.#budget !== null && this.#cost >= this.#budget) return null;
+    this.#titling = true;
+    const started = Date.now();
+    try {
+      let output: HistoryItem[] = [];
+      let usage = emptyUsage();
+      for await (const event of this.#client.stream(
+        {
+          model: TITLE_MODEL,
+          instructions: "",
+          input: [{ role: "user", content: titleRequest(this.#asked.slice(0, TITLE_MESSAGES)) }],
+          effort: "none",
+          promptCacheKey: `${this.id}-title`,
+        },
+        signal,
+      )) {
+        if (event.type === "completed") {
+          output = event.output;
+          usage = event.usage;
+        }
+      }
+      const cost = costOf(TITLE_MODEL, usage);
+      addUsage(this.#usage, usage);
+      this.#cost += cost;
+      const call: ModelCall = {
+        turn: this.#turn,
+        step: this.#calls.filter((entry) => entry.turn === this.#turn).length + 1,
+        kind: "title",
+        model: TITLE_MODEL,
+        effort: "none",
+        usage: { ...usage },
+        cost,
+        durationMs: Date.now() - started,
+        retries: 0,
+        tools: [],
+      };
+      this.#calls.push(call);
+      this.#save((store) => store.saveModelCall?.(this.id, call));
+      const title = parseTitle(replyText(output));
+      // The user may have renamed it meanwhile
+      if (!title || this.#titled) return null;
+      this.#title = title;
+      this.#titled = true;
+      this.#save((store) => store.saveTitle?.(this.id, title, "model"));
+      return title;
+    } catch {
+      // No title this time; the next reply tries again
+      return null;
+    } finally {
+      this.#titling = false;
+    }
   }
 
   // Model calls of one reply, the latest by default
@@ -384,7 +477,9 @@ export class Session {
     // A failed turn the user moved on from still happened
     if (this.#pending) this.#keepFailedTurn();
     const turn = ++this.#turn;
-    if (!this.#title) this.#title = text.trim().slice(0, 120);
+    const shown = this.#describe(text).trim();
+    if (!this.#title) this.#title = shown.slice(0, 120);
+    if (shown) this.#asked.push(shown);
     const state = this.#newState(turn, [{ role: "user", content: text }]);
     this.#saveItems(turn, state.items);
     yield* this.#run(state, signal);

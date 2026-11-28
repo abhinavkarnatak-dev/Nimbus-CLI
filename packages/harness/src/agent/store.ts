@@ -6,9 +6,12 @@ export interface SessionInfo {
   id: string;
   cwd: string;
   model: string;
-  // First user message; stores keep the first one they see
+  // First user message until a real title is set
   title: string;
 }
+
+// Who named the session: the first message, the model or the user
+export type TitleSource = "first" | "model" | "user";
 
 export type TurnStatus = "done" | "cancelled" | "failed";
 
@@ -34,6 +37,8 @@ export interface SessionStore {
   saveCompaction(sessionId: string, turn: number, items: HistoryItem[]): void;
   // One model call with its tokens, cost and time
   saveModelCall?(sessionId: string, call: ModelCall): void;
+  // A title from the model or the user replaces the first message
+  saveTitle?(sessionId: string, title: string, source: TitleSource): void;
 }
 
 export interface MemoryTurn {
@@ -79,6 +84,12 @@ export class MemorySessionStore implements SessionStore {
 
   saveCompaction(sessionId: string, turn: number, items: HistoryItem[]): void {
     this.compactions.set(sessionId, { turn, items: structuredClone(items) });
+  }
+
+  readonly titles = new Map<string, { title: string; source: TitleSource }>();
+
+  saveTitle(sessionId: string, title: string, source: TitleSource): void {
+    this.titles.set(sessionId, { title, source });
   }
 
   readonly calls = new Map<string, ModelCall[]>();

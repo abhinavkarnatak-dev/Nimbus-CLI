@@ -15,7 +15,7 @@ export function traceReport(turn: number, calls: readonly ModelCall[]): string[]
     const { inputTokens, cachedTokens, outputTokens } = call.usage;
     const cached = inputTokens ? Math.round((cachedTokens / inputTokens) * 100) : 0;
     const parts = [
-      `${call.step}.${call.kind === "summary" ? " summary" : ""} ${call.model}${call.effort ? ` ${call.effort}` : ""}`,
+      `${call.step}.${call.kind === "reply" ? "" : ` ${call.kind}`} ${call.model}${call.effort ? ` ${call.effort}` : ""}`,
       `in ${number(inputTokens)} (${cached}% cached)`,
       `out ${number(outputTokens)}`,
       formatCost(call.cost),

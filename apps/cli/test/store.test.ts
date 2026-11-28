@@ -70,6 +70,13 @@ describe("SQLite session store", () => {
     });
     expect(reopened.load("missing")).toBeNull();
 
+    expect(saved.titleSource).toBe("first");
+    reopened.saveTitle("abc", "Say hi", "model");
+    expect(reopened.load("abc")!.info.title).toBe("Say hi");
+    expect(reopened.load("abc")!.titleSource).toBe("model");
+    expect(resumeStateFrom(reopened.load("abc")!).titled).toBe(true);
+    expect(resumeStateFrom(saved).titled).toBe(false);
+
     // Model calls come back for /trace, with their tool results
     expect(saved.turns[0]!.calls).toHaveLength(2);
     const resumed = new Session({

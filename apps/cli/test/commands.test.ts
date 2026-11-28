@@ -8,7 +8,10 @@ import {
   matchCommands,
   parseCommand,
   parseCommitRequest,
+  shownMessage,
+  shownTitle,
   skillCommands,
+  INIT_REQUEST,
 } from "../src/ui/commands.js";
 
 describe("parseCommand", () => {
@@ -46,5 +49,17 @@ describe("parseCommand", () => {
     expect(new ModelChoice(memorySettings({ model: "gpt-9" })).model).toBe("gpt-6-luna");
     const astra = new ModelChoice(memorySettings({ model: "gpt-6.2-astra", effort: "none" }));
     expect([astra.model, astra.effort]).toEqual(["gpt-6.2-astra", "medium"]);
+  });
+
+  it("shows what the user typed instead of a hidden request, also for old titles", () => {
+    expect(shownMessage(INIT_REQUEST)).toBe("/init");
+    expect(shownMessage(commitRequest("x"))).toBe("/commit x");
+    expect(shownMessage("hello")).toBe("hello");
+    expect(shownTitle(INIT_REQUEST.slice(0, 120))).toBe("/init");
+    expect(shownTitle(COMMIT_REQUEST.slice(0, 120))).toBe("/commit");
+    expect(
+      shownTitle('The user ran the skill "count-js-lines" by typing /count-js-lines. Fol'),
+    ).toBe("/count-js-lines");
+    expect(shownTitle("Fix the login bug")).toBe("Fix the login bug");
   });
 });

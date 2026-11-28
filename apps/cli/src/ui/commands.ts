@@ -1,4 +1,4 @@
-import type { Skill } from "@nimbus/harness";
+import { parseSkillRequest, type Skill } from "@nimbus/harness";
 export interface SlashCommand {
   name: string;
   description: string;
@@ -53,10 +53,25 @@ export function parseCommitRequest(text: string): string | null {
   return `/commit ${text.slice(COMMIT_REQUEST.length + ADDED.length)}`;
 }
 
+// What the user typed, for a request Nimbus wrote for them
+export function shownMessage(text: string): string {
+  if (text === INIT_REQUEST) return "/init";
+  return parseSkillRequest(text) ?? parseCommitRequest(text) ?? text;
+}
+
+// Titles saved before real titles: the start of a hidden request
+export function shownTitle(title: string): string {
+  if (title.length >= 40 && INIT_REQUEST.startsWith(title)) return "/init";
+  if (title.length >= 40 && COMMIT_REQUEST.startsWith(title)) return "/commit";
+  const skill = /^The user ran the skill "([a-z0-9-]+)"/.exec(title);
+  return skill ? `/${skill[1]}` : title;
+}
+
 export const COMMANDS: SlashCommand[] = [
   { name: "/help", description: "Show commands and shortcuts" },
   { name: "/clear", description: "Start a fresh conversation" },
   { name: "/resume", description: "Open an earlier conversation from this folder" },
+  { name: "/rename", description: "Give this conversation your own name (/rename <name>)" },
   { name: "/init", description: "Write an AGENTS.md that tells Nimbus about this project" },
   { name: "/commit", description: "Write a commit message for the staged changes and commit" },
   { name: "/memory", description: "Show what Nimbus remembers (/memory forget <number>)" },
@@ -113,6 +128,7 @@ export const HELP_TEXT = [
   "- `Ctrl+L` clear the screen, the conversation stays (`/clear` starts a new one)",
   "- `Up` / `Down` previous messages",
   "- `Tab` complete a command",
+  "- `Shift+Tab` switch the permission mode: ask, auto edits, don't ask (shown in the status bar)",
   "- `/<skill name>` run a skill, with optional text after it (see `/skills`)",
   "- `/login CODE` to join with an invite code",
   "- `Ctrl+C` twice to quit",

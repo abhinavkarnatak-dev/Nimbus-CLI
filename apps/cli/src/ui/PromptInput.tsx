@@ -93,7 +93,7 @@ export function PromptInput({
           onSelect((selected + step + menu.length) % menu.length);
           return;
         }
-        if (key.tab) {
+        if (key.tab && !key.shift) {
           apply(fromText(choice.name));
           return;
         }

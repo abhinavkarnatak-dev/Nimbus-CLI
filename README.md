@@ -51,12 +51,13 @@ Type `/` inside Nimbus to see every command, or `/help` for the full list.
 - `Enter` sends, `Shift+Enter` or `Ctrl+J` adds a new line
 - `Esc` stops the current reply
 - `Ctrl+L` clears the screen, `/clear` starts a new conversation, `/resume` opens an earlier one
+- Conversations get a short name from what you are working on, shown in `/resume`; `/rename` gives one your own name
 - For bigger tasks Nimbus keeps a checklist you can watch as it works; `/todo` shows it
 - The status bar shows how full the conversation is, and `/context` shows what fills it
 - Long conversations shrink by themselves when they get full; `/compact` does it now
 - Nimbus reads your project's `AGENTS.md` (or `CLAUDE.md`) every session; `/init` writes one for you
 - Tell Nimbus to remember something and it will know it next time; `/memory` shows what it remembers
-- Nimbus asks before it edits files or runs commands; `/permissions` lets it edit without asking, or stop asking (it still asks before git pushes, commits and anything touching secret files like `.env`, which it never reads)
+- Nimbus asks before it edits files or runs commands; `/permissions` or `Shift+Tab` lets it edit without asking, or stop asking (it still asks before git pushes, commits and anything touching secret files like `.env`, which it never reads)
 - `/model` picks the model (GPT-6.2 Astra, GPT-6.2 Sol, GPT-6.1 Terra, GPT-6 Luna and older ones) and how much it thinks before answering; your choice is saved
 - `/commit` writes a commit message for your staged changes and commits after you approve it (it never pushes)
 - `/trace` shows each model call of the last reply: tokens, cache, cost, time and the tools it used (`/trace 3` for reply 3)

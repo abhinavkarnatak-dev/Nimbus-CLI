@@ -7,6 +7,7 @@ export {
   type MemoryTurn,
   type SessionInfo,
   type SessionStore,
+  type TitleSource,
   type ToolView,
   type TurnStatus,
 } from "./agent/store.js";
@@ -96,6 +97,7 @@ export {
   type ReasoningEffort,
 } from "./models.js";
 export { withToolViews, type ModelCall, type TracedTool } from "./agent/trace.js";
+export { parseTitle, TITLE_MODEL, titleRequest } from "./agent/title.js";
 export {
   loadSkills,
   MAX_LISTED_SKILLS,

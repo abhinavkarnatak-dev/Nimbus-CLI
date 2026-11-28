@@ -435,6 +435,8 @@ export function App({
       setRunningSince(null);
       refreshContext();
       if (retry) await runTurn(text, { echo: false, retry: true, switched: true });
+      // Name the chat in the background once there is something to name
+      else void current.makeTitle();
     },
     [append, flush, auth, billing, switchRoute, refreshContext],
   );
@@ -499,6 +501,19 @@ export function App({
         case "/help":
           append({ kind: "assistant", id: newId(), text: HELP_TEXT });
           return;
+        case "/rename": {
+          const name = arg.trim().replace(/\s+/g, " ").slice(0, 80);
+          if (!name) {
+            notice(
+              "Add the new name after the command, for example /rename Login bug fix.",
+              "error",
+            );
+            return;
+          }
+          session.current.rename(name);
+          notice(`Renamed this conversation to "${name}".`);
+          return;
+        }
         case "/commit":
           if (controller.current) {
             notice("Wait for the reply to finish, or press esc to stop it, then /commit.");
@@ -898,6 +913,16 @@ export function App({
   useInput((input, key) => {
     if (key.ctrl && input === "l") {
       clearScreen();
+      return;
+    }
+    // Shift+Tab steps through the permission modes
+    if (key.tab && key.shift) {
+      if (permissions && !approval && !modePicker && !modelPicker) {
+        const index = MODES.findIndex((option) => option.mode === permissions.mode);
+        const next = MODES[(index + 1) % MODES.length]!;
+        permissions.setMode(next.mode);
+        setMode(next.mode);
+      }
       return;
     }
     if (approval) {

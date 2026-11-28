@@ -338,6 +338,44 @@ describe("App", () => {
     unmount();
   });
 
+  it("steps through the permission modes with Shift+Tab", async () => {
+    const settings = memorySettings({});
+    const permissions = new Permissions(settings);
+    const createSession = () =>
+      new Session({
+        client: new FakeModelClient([]),
+        model: "gpt-6-luna",
+        instructions: "t",
+        cwd: tmpdir(),
+      });
+    const { lastFrame, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        permissions={permissions}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("half typed");
+    await tick();
+    stdin.write("\u001B[Z");
+    await tick();
+    expect(permissions.mode).toBe("edits");
+    expect(lastFrame()).toContain("auto edits");
+    stdin.write("\u001B[Z");
+    await tick();
+    expect(permissions.mode).toBe("full");
+    expect(lastFrame()).toContain("don't ask");
+    stdin.write("\u001B[Z");
+    await tick();
+    expect(permissions.mode).toBe("ask");
+    expect(settings.load().permissions).toBe("ask");
+    // The draft is untouched
+    expect(lastFrame()).toContain("half typed");
+    unmount();
+  });
+
   it("switches the permission mode with /permissions", async () => {
     const permissions = new Permissions(memorySettings({}));
     const createSession = () =>
@@ -556,6 +594,43 @@ describe("App", () => {
     await tick();
     stdin.write("\r");
     await waitFor(() => frames.join("\n").includes("Reply 7 has no saved model calls."));
+    unmount();
+  });
+
+  it("names the chat in the background after a reply, and /rename sets the user's name", async () => {
+    let made: Session | null = null;
+    const client = new FakeModelClient([{ text: "Sure" }, { text: "Count JS files in src" }]);
+    const createSession = () => {
+      made = new Session({
+        client,
+        model: "gpt-6-luna",
+        instructions: "t",
+        cwd: tmpdir(),
+        titles: true,
+      });
+      return made;
+    };
+    const { frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("how many js files are in src?");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => made!.title === "Count JS files in src");
+    stdin.write("/rename   My   JS count");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes('Renamed this conversation to "My JS count".'));
+    expect(made!.title).toBe("My JS count");
+    stdin.write("/rename");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Add the new name after the command"));
     unmount();
   });
 

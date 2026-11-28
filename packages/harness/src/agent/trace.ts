@@ -16,8 +16,8 @@ export interface ModelCall {
   turn: number;
   // Order within the turn, from 1
   step: number;
-  // A summary is a compaction call
-  kind: "reply" | "summary";
+  // A summary is a compaction call, a title names the session
+  kind: "reply" | "summary" | "title";
   model: string;
   effort: ReasoningEffort | null;
   usage: Usage;
