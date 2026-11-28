@@ -1,3 +1,4 @@
+import type { ModelCall } from "./trace.js";
 import type { FileChange } from "../tools/changes.js";
 import type { HistoryItem, Usage } from "../model/types.js";
 
@@ -31,6 +32,8 @@ export interface SessionStore {
   saveFileChange(sessionId: string, change: FileChange): void;
   // History before this turn was replaced by these items
   saveCompaction(sessionId: string, turn: number, items: HistoryItem[]): void;
+  // One model call with its tokens, cost and time
+  saveModelCall?(sessionId: string, call: ModelCall): void;
 }
 
 export interface MemoryTurn {
@@ -76,6 +79,12 @@ export class MemorySessionStore implements SessionStore {
 
   saveCompaction(sessionId: string, turn: number, items: HistoryItem[]): void {
     this.compactions.set(sessionId, { turn, items: structuredClone(items) });
+  }
+
+  readonly calls = new Map<string, ModelCall[]>();
+
+  saveModelCall(sessionId: string, call: ModelCall): void {
+    this.calls.set(sessionId, [...(this.calls.get(sessionId) ?? []), structuredClone(call)]);
   }
 
   saveFileChange(sessionId: string, change: FileChange): void {

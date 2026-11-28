@@ -9,9 +9,14 @@ export interface ModelPrice {
   output: number;
 }
 
+// Every model Nimbus offers; the server allows only these
 export const MODEL_PRICES: Record<string, ModelPrice> = {
-  "gpt-6-luna": { input: 0.1, cached: 0.01, cacheWrite: 0.125, output: 0.5 },
+  "gpt-6.2-astra": { input: 8, cached: 0.4, cacheWrite: 10, output: 40 },
+  "gpt-6.2-sol": { input: 2, cached: 0.1, cacheWrite: 2.5, output: 10 },
   "gpt-6.1-terra": { input: 1, cached: 0.05, cacheWrite: 1.25, output: 5 },
+  "gpt-6-luna": { input: 0.1, cached: 0.01, cacheWrite: 0.125, output: 0.5 },
+  "gpt-6-astra": { input: 10, cached: 1, cacheWrite: 12.5, output: 50 },
+  "gpt-6.1-sol": { input: 2, cached: 0.1, cacheWrite: 2.5, output: 10 },
 };
 
 // Above this many input tokens the whole request costs more

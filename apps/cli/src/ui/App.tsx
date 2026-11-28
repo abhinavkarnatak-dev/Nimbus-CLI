@@ -1,5 +1,6 @@
 import {
   cacheSavings,
+  MODELS,
   skillRequest,
   todoLines,
   type ContextUsage,
@@ -12,8 +13,18 @@ import type { BillingController } from "../billing/controller.js";
 import type { Route } from "../settings.js";
 import { Box, Static, useApp, useInput, useWindowSize } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HELP_TEXT, INIT_REQUEST, matchCommands, parseCommand, skillCommands } from "./commands.js";
+import {
+  commitRequest,
+  HELP_TEXT,
+  INIT_REQUEST,
+  matchCommands,
+  parseCommand,
+  skillCommands,
+} from "./commands.js";
 import { skillsReport } from "./skills.js";
+import { traceReport } from "./trace.js";
+import { effortsOf, ModelPanel, type ModelPickerState } from "./ModelPanel.js";
+import type { ModelChoice } from "../model-choice.js";
 import { emptyDraft, fromText, type Draft } from "./editor.js";
 import { formatCost, formatTokens } from "./format.js";
 import { Header, type HeaderInfo } from "./Header.js";
@@ -56,6 +67,8 @@ interface Props {
   permissions?: Permissions;
   // Facts the model saved, for /memory
   memory?: FileMemory;
+  // The chosen model and reasoning level, saved for next time
+  models?: ModelChoice;
   // Saved conversations; missing when the store could not open
   sessions?: SessionHistory;
   // --continue passes a session, --resume opens the picker
@@ -150,6 +163,7 @@ export function App({
   resumeOnStart,
   permissions,
   memory,
+  models,
 }: Props) {
   const { exit } = useApp();
   const initial = typeof resumeOnStart === "object" ? resumeOnStart : undefined;
@@ -159,6 +173,12 @@ export function App({
   const [approval, setApproval] = useState<ApprovalState | null>(null);
   const answer = useRef<((choice: ApprovalChoice) => void) | null>(null);
   const [modePicker, setModePicker] = useState<ModePicker | null>(null);
+  const [modelPicker, setModelPicker] = useState<ModelPickerState | null>(null);
+  // Shown in the status bar
+  const [modelShown, setModelShown] = useState(() => ({
+    model: session.current.model,
+    effort: session.current.effort,
+  }));
   const [mode, setMode] = useState(() => permissions?.mode ?? "ask");
   const { columns, rows } = useWindowSize();
   const maxLines = boxLines(rows);
@@ -479,6 +499,50 @@ export function App({
         case "/help":
           append({ kind: "assistant", id: newId(), text: HELP_TEXT });
           return;
+        case "/commit":
+          if (controller.current) {
+            notice("Wait for the reply to finish, or press esc to stop it, then /commit.");
+            return;
+          }
+          append({ kind: "user", id: newId(), text: arg ? `/commit ${arg}` : "/commit" });
+          void runTurn(commitRequest(arg), { echo: false });
+          return;
+        case "/model": {
+          if (controller.current) {
+            notice("Wait for the reply to finish, or press esc to stop it, then /model.");
+            return;
+          }
+          const current = session.current.model;
+          setModelPicker({
+            stage: "model",
+            current,
+            effort: session.current.effort ?? "medium",
+            selected: Math.max(
+              0,
+              MODELS.findIndex((model) => model.id === current),
+            ),
+          });
+          return;
+        }
+        case "/trace": {
+          const wanted = arg.trim();
+          const number = wanted ? Number(wanted) : undefined;
+          if (wanted && (!Number.isInteger(number) || number! < 1)) {
+            notice("Use /trace for the last reply, or /trace 3 for reply 3.", "error");
+            return;
+          }
+          const trace = session.current.trace(number);
+          if (!trace) {
+            notice(
+              number
+                ? `Reply ${number} has no saved model calls.`
+                : "No model calls yet. Send a message first.",
+            );
+            return;
+          }
+          notice(asNotice(traceReport(trace.turn, trace.calls)));
+          return;
+        }
         case "/init":
           if (controller.current) {
             notice("Wait for the reply to finish, or press esc to stop it, then /init.");
@@ -532,11 +596,13 @@ export function App({
           return;
         }
         case "/context":
-          notice(contextReport(session.current.context(), session.current.usage, info.model));
+          notice(
+            contextReport(session.current.context(), session.current.usage, session.current.model),
+          );
           return;
         case "/usage": {
           const current = session.current;
-          const report = usageReport(current.usage, current.cost, info.model, current.budget);
+          const report = usageReport(current.usage, current.cost, current.model, current.budget);
           if (billing.state.route === "key") {
             notice(asNotice([...report, `Paid with your OpenAI key (${billing.state.keyHint})`]));
             return;
@@ -709,7 +775,6 @@ export function App({
       billing,
       clearScreen,
       createSession,
-      info.model,
       notice,
       memory,
       openPicker,
@@ -848,6 +913,35 @@ export function App({
         answer.current?.(options[digit - 1]!.choice);
       } else if (key.escape) {
         answer.current?.("no");
+      }
+      return;
+    }
+    if (modelPicker) {
+      const count =
+        modelPicker.stage === "model" ? MODELS.length : effortsOf(modelPicker.model).length;
+      if (key.upArrow || key.downArrow) {
+        const step = key.upArrow ? -1 : 1;
+        setModelPicker({ ...modelPicker, selected: (modelPicker.selected + step + count) % count });
+      } else if (key.return && modelPicker.stage === "model") {
+        const model = MODELS[modelPicker.selected]!.id;
+        const efforts = effortsOf(model);
+        // Keep the level when the new model has it
+        const keep = efforts.includes(modelPicker.effort) ? modelPicker.effort : "medium";
+        setModelPicker({
+          stage: "effort",
+          model,
+          current: modelPicker.effort,
+          selected: Math.max(0, efforts.indexOf(keep)),
+        });
+      } else if (key.return && modelPicker.stage === "effort") {
+        const effort = effortsOf(modelPicker.model)[modelPicker.selected]!;
+        setModelPicker(null);
+        models?.set(modelPicker.model, effort);
+        session.current.setModel(modelPicker.model, effort);
+        setModelShown({ model: modelPicker.model, effort });
+        notice(`Model: ${modelPicker.model}, ${effort} reasoning. Saved for next time.`);
+      } else if (key.escape) {
+        setModelPicker(null);
       }
       return;
     }
@@ -1007,6 +1101,7 @@ export function App({
           <BudgetPanel pause={budgetPause} />
           <ApprovalPanel state={approval} maxLines={maxLines} />
           <PermissionsPanel picker={modePicker} />
+          <ModelPanel picker={modelPicker} />
           <Box marginTop={1} flexDirection="column">
             <PromptInput
               draft={draft}
@@ -1019,13 +1114,24 @@ export function App({
               onSelect={setMenuIndex}
               onBrowsingChange={setBrowsingHistory}
               mask={panel.kind === "key"}
-              active={panel.kind !== "use" && !picker && !budgetPause && !approval && !modePicker}
+              active={
+                panel.kind !== "use" &&
+                !picker &&
+                !budgetPause &&
+                !approval &&
+                !modePicker &&
+                !modelPicker
+              }
             />
             {menu.length > 0 ? (
               <CommandMenu commands={menu} selected={selected} />
             ) : (
               <StatusBar
-                model={info.model}
+                model={
+                  modelShown.effort
+                    ? `${modelShown.model} · ${modelShown.effort}`
+                    : modelShown.model
+                }
                 hint={hint}
                 context={contextUsage}
                 badge={MODE_BADGE[mode]}

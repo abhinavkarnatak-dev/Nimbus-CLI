@@ -86,6 +86,17 @@ export {
 export { rememberTool, type MemoryBook, type MemoryScope } from "./tools/remember.js";
 export { loadSkillTool } from "./tools/skill.js";
 export {
+  DEFAULT_EFFORT,
+  DEFAULT_MODEL,
+  EFFORT_HINTS,
+  effortFor,
+  modelInfo,
+  MODELS,
+  type ModelInfo,
+  type ReasoningEffort,
+} from "./models.js";
+export { withToolViews, type ModelCall, type TracedTool } from "./agent/trace.js";
+export {
   loadSkills,
   MAX_LISTED_SKILLS,
   parseSkillFile,

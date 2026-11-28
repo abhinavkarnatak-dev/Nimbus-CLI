@@ -19,17 +19,54 @@ project (under about 80 lines), with these sections:
 Only write what you found in the project; do not guess. If AGENTS.md already exists,
 read it and improve it instead of replacing what the user wrote.`;
 
+// Sent as the user's message on /commit; seen by the model
+export const COMMIT_REQUEST = `Write a commit message for the user's staged changes and commit them.
+
+1. Run git status and git diff --staged to see what is staged. If nothing is staged, stop
+   and tell the user to stage the files they want first (for example with git add). Never
+   stage, unstage or change files yourself.
+2. Read the staged diff carefully. If it is large, start with git diff --staged --stat to
+   see which files changed, then read the important parts.
+3. Look at the last few commits with git log --oneline -10 and follow their style if the
+   project has one.
+4. Write one commit message in the form type(scope): message
+   - type is one of feat, fix, refactor, docs, test, perf, style, build or chore.
+   - scope is the main part of the project that changed, in one or two words.
+   - message says what changed in plain words, in under about 72 characters.
+   - If the change needs more explanation, add a short body after a blank line: what
+     changed and why, not how.
+5. Commit with git commit -m "<message>" (and a second -m for the body). Do not add
+   co-author lines, sign-offs or any other trailers, and never use --amend or --no-verify.
+6. Never push. After the commit, show the user the commit hash and message.`;
+
+const ADDED = "\n\nThe user added: ";
+
+// "/commit text": the request plus what the user typed
+export function commitRequest(arg: string): string {
+  return arg.trim() ? `${COMMIT_REQUEST}${ADDED}${arg.trim()}` : COMMIT_REQUEST;
+}
+
+// What the user typed, for showing a saved request again
+export function parseCommitRequest(text: string): string | null {
+  if (text === COMMIT_REQUEST) return "/commit";
+  if (!text.startsWith(COMMIT_REQUEST + ADDED)) return null;
+  return `/commit ${text.slice(COMMIT_REQUEST.length + ADDED.length)}`;
+}
+
 export const COMMANDS: SlashCommand[] = [
   { name: "/help", description: "Show commands and shortcuts" },
   { name: "/clear", description: "Start a fresh conversation" },
   { name: "/resume", description: "Open an earlier conversation from this folder" },
   { name: "/init", description: "Write an AGENTS.md that tells Nimbus about this project" },
+  { name: "/commit", description: "Write a commit message for the staged changes and commit" },
   { name: "/memory", description: "Show what Nimbus remembers (/memory forget <number>)" },
   { name: "/skills", description: "Show the skills Nimbus can use (run one with /name)" },
   { name: "/todo", description: "Show the checklist for the current task" },
   { name: "/context", description: "Show how full the conversation is and what fills it" },
   { name: "/compact", description: "Shrink the conversation, optionally with a focus" },
   { name: "/usage", description: "Show tokens and cost for this session" },
+  { name: "/trace", description: "Show each model call of the last reply (/trace 3 for reply 3)" },
+  { name: "/model", description: "Choose the model and how much it thinks" },
   { name: "/permissions", description: "Choose when Nimbus asks before edits and commands" },
   { name: "/budget", description: "Set a spending limit for this session (/budget 0.50)" },
   { name: "/login", description: "Log in with Google, optionally with an invite code" },

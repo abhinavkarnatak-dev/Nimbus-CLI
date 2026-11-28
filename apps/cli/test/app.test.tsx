@@ -10,7 +10,8 @@ import { memoryStore } from "../src/auth/credentials.js";
 import { memorySecret } from "../src/auth/secrets.js";
 import { Permissions } from "../src/permissions.js";
 import { FileMemory } from "../src/store/memory.js";
-import { COMMANDS, INIT_REQUEST } from "../src/ui/commands.js";
+import { COMMANDS, COMMIT_REQUEST, INIT_REQUEST } from "../src/ui/commands.js";
+import { ModelChoice } from "../src/model-choice.js";
 import { BillingController } from "../src/billing/controller.js";
 import { RoutingModelClient } from "../src/billing/router.js";
 import { memorySettings } from "../src/settings.js";
@@ -443,6 +444,118 @@ describe("App", () => {
       content: skillRequest(skills[0]!, "the auth files"),
     });
     expect(skillRequest(skills[0]!, "the auth files")).toContain("Review the auth files now.");
+    unmount();
+  });
+
+  it("switches the model and reasoning level with /model, and saves the choice", async () => {
+    const settings = memorySettings({});
+    const models = new ModelChoice(settings);
+    const client = new FakeModelClient([{ text: "first" }, { text: "second" }]);
+    const createSession = () =>
+      new Session({
+        client,
+        model: models.model,
+        effort: models.effort,
+        instructions: "t",
+        cwd: tmpdir(),
+      });
+    const { lastFrame, frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: models.model, shell: "bash", cwd: tmpdir() }}
+        models={models}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    expect(lastFrame()).toContain("gpt-6-luna · medium");
+    stdin.write("hi");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("first"));
+    expect(client.requests[0]!.effort).toBe("medium");
+
+    stdin.write("/model");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("Choose a model"));
+    expect(lastFrame()).toContain("gpt-6-luna");
+    expect(lastFrame()).toContain("· current");
+    // Three up from gpt-6-luna is the first model
+    for (let i = 0; i < 3; i++) {
+      stdin.write("\u001B[A");
+      await tick();
+    }
+    expect(lastFrame()).toContain("› gpt-6.2-astra");
+    stdin.write("\r");
+    await waitFor(() => (lastFrame() ?? "").includes("How much should gpt-6.2-astra think?"));
+    // Astra cannot turn thinking off
+    expect(lastFrame()).not.toContain("No thinking");
+    expect(lastFrame()).toContain("› medium");
+    stdin.write("\u001B[B");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Model: gpt-6.2-astra, high reasoning."));
+    expect(lastFrame()).toContain("gpt-6.2-astra · high");
+    expect(settings.load()).toMatchObject({ model: "gpt-6.2-astra", effort: "high" });
+
+    stdin.write("again");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("second"));
+    expect(client.requests[1]!.model).toBe("gpt-6.2-astra");
+    expect(client.requests[1]!.effort).toBe("high");
+    unmount();
+  });
+
+  it("sends the commit request on /commit and shows each model call on /trace", async () => {
+    const client = new FakeModelClient([
+      { toolCalls: [{ name: "glob", args: { pattern: "*.nothing", path: null } }] },
+      { text: "Committed abc123" },
+    ]);
+    const createSession = () =>
+      new Session({
+        client,
+        model: "gpt-6-luna",
+        effort: "low",
+        instructions: "t",
+        cwd: tmpdir(),
+        tools: defaultTools,
+      });
+    const { frames, stdin, unmount } = render(
+      <App
+        createSession={createSession}
+        info={{ version: "0", model: "gpt-6-luna", shell: "bash", cwd: tmpdir() }}
+        {...signedIn()}
+      />,
+    );
+    await tick();
+    stdin.write("/trace");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("No model calls yet."));
+
+    stdin.write("/commit mention the login fix");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Committed abc123"));
+    expect(frames.join("\n")).toContain("/commit mention the login fix");
+    expect(client.requests[0]!.input[0]).toEqual({
+      role: "user",
+      content: `${COMMIT_REQUEST}\n\nThe user added: mention the login fix`,
+    });
+
+    stdin.write("/trace");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Reply 1: 2 model calls, 1 tool"));
+    const all = frames.join("\n");
+    expect(all).toContain("1. gpt-6-luna low");
+    expect(all).toContain("2. gpt-6-luna low");
+    stdin.write("/trace 7");
+    await tick();
+    stdin.write("\r");
+    await waitFor(() => frames.join("\n").includes("Reply 7 has no saved model calls."));
     unmount();
   });
 

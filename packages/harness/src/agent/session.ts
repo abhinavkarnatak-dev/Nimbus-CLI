@@ -31,6 +31,8 @@ import { DECLINED_NOTE, SKIPPED_NOTE, type ApproveFn } from "./approval.js";
 import { TurnChecks, VERIFY_REMINDER } from "./checks.js";
 import { contextParts, estimateItems, estimateTokens, type ContextUsage } from "./context.js";
 import type { Skill } from "../prompt/skills.js";
+import type { ReasoningEffort } from "../models.js";
+import type { ModelCall } from "./trace.js";
 import type { MemoryBook } from "../tools/remember.js";
 import { todosFrom, type Todo } from "../tools/todos.js";
 import type { AgentEvent } from "./events.js";
@@ -89,6 +91,8 @@ export interface SessionOptions {
   approve?: ApproveFn;
   // Where the remember tool saves facts
   memory?: MemoryBook;
+  // Reasoning level sent with every call; left out uses the model's default
+  effort?: ReasoningEffort;
   // Skills listed in the system prompt, for load_skill
   skills?: readonly Skill[];
   // Personal skills folder, writable outside cwd
@@ -132,7 +136,10 @@ function errorDetails(error: unknown): { status?: number; code?: string } {
 
 export class Session {
   readonly id: string;
-  readonly model: string;
+  #model: string;
+  #effort: ReasoningEffort | null;
+  // Every model call, for /trace
+  readonly #calls: ModelCall[];
   readonly cwd: string;
   readonly #client: ModelClient;
   readonly #instructions: string;
@@ -170,7 +177,9 @@ export class Session {
 
   constructor(options: SessionOptions) {
     this.id = options.id ?? randomUUID();
-    this.model = options.model;
+    this.#model = options.model;
+    this.#effort = options.effort ?? null;
+    this.#calls = [...(options.resume?.calls ?? [])];
     this.cwd = options.cwd;
     this.#client = options.client;
     this.#instructions = options.instructions;
@@ -255,6 +264,29 @@ export class Session {
 
   get cost(): number {
     return this.#cost;
+  }
+
+  get model(): string {
+    return this.#model;
+  }
+
+  get effort(): ReasoningEffort | null {
+    return this.#effort;
+  }
+
+  // A new model cannot read the old one's reasoning
+  setModel(model: string, effort: ReasoningEffort | null): void {
+    if (model !== this.#model) this.forgetReasoning();
+    this.#model = model;
+    this.#effort = effort;
+  }
+
+  // Model calls of one reply, the latest by default
+  trace(turn?: number): { turn: number; calls: ModelCall[] } | null {
+    const target = turn ?? this.#calls.at(-1)?.turn;
+    if (target === undefined) return null;
+    const calls = this.#calls.filter((call) => call.turn === target);
+    return calls.length > 0 ? { turn: target, calls } : null;
   }
 
   // Encrypted reasoning only works with the account that made it
@@ -540,6 +572,7 @@ export class Session {
           };
           this.#saveItems(turn, [outputItem]);
           this.#save((store) => store.saveToolView(this.id, turn, view));
+          this.#traceTool(view);
           const { callId, ...visible } = view;
           yield { type: "tool_call_end", id: callId, ...visible };
         }
@@ -616,6 +649,8 @@ export class Session {
         input: [...this.#history, { role: "user", content: compactRequest(focus) }],
         toolChoice: "none",
         quiet: true,
+        // /compact belongs to the reply before it
+        traceTurn: manual ? this.#turn : state.turn,
       });
     } catch (error) {
       if (signal?.aborted || manual) throw error;
@@ -709,12 +744,20 @@ export class Session {
     state: TurnState,
     tools: ToolSpec[],
     signal?: AbortSignal,
-    options: { input?: HistoryItem[]; toolChoice?: "none"; quiet?: boolean } = {},
+    options: {
+      input?: HistoryItem[];
+      toolChoice?: "none";
+      quiet?: boolean;
+      traceTurn?: number;
+    } = {},
   ): AsyncGenerator<AgentEvent, HistoryItem[]> {
+    const started = Date.now();
     for (let attempt = 1; ; attempt++) {
       let streamed = false;
       try {
         let output: HistoryItem[] | undefined;
+        let usage: Usage | undefined;
+        let callCost = 0;
         const events = this.#client.stream(
           {
             model: this.model,
@@ -723,6 +766,7 @@ export class Session {
             tools: tools.length > 0 ? tools : undefined,
             toolChoice: options.toolChoice,
             promptCacheKey: this.id,
+            effort: this.#effort ?? undefined,
           },
           signal,
         );
@@ -734,6 +778,8 @@ export class Session {
             output = event.output;
             state.lastCall = event.usage;
             const cost = costOf(this.model, event.usage);
+            usage = event.usage;
+            callCost = cost;
             addUsage(state.usage, event.usage);
             addUsage(this.#usage, event.usage);
             state.cost += cost;
@@ -741,6 +787,12 @@ export class Session {
           }
         }
         if (!output) throw new ConnectionLostError("The reply ended before it finished.");
+        this.#traceCall(output, usage ?? emptyUsage(), callCost, {
+          turn: options.traceTurn ?? state.turn,
+          kind: options.quiet ? "summary" : "reply",
+          durationMs: Date.now() - started,
+          retries: attempt - 1,
+        });
         return output;
       } catch (error) {
         if (signal?.aborted || attempt > this.#maxRetries || !isRetryable(error)) throw error;
@@ -754,6 +806,43 @@ export class Session {
           restarted: streamed && !options.quiet,
         };
         await sleep(delayMs, signal);
+      }
+    }
+  }
+
+  #traceCall(
+    output: HistoryItem[],
+    usage: Usage,
+    cost: number,
+    meta: Pick<ModelCall, "turn" | "kind" | "durationMs" | "retries">,
+  ): void {
+    const call: ModelCall = {
+      ...meta,
+      step: this.#calls.filter((entry) => entry.turn === meta.turn).length + 1,
+      model: this.#model,
+      effort: this.#effort,
+      usage: { ...usage },
+      cost,
+      tools: output.filter(isFunctionCall).map((item) => ({
+        callId: item.call_id,
+        name: item.name,
+        args: item.arguments,
+        ok: null,
+        durationMs: null,
+      })),
+    };
+    this.#calls.push(call);
+    this.#save((store) => store.saveModelCall?.(this.id, call));
+  }
+
+  // Fill in how a traced tool went
+  #traceTool(view: ToolView): void {
+    for (let index = this.#calls.length - 1; index >= 0; index--) {
+      const tool = this.#calls[index]!.tools.find((entry) => entry.callId === view.callId);
+      if (tool) {
+        tool.ok = !view.isError;
+        tool.durationMs = view.durationMs;
+        return;
       }
     }
   }

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { FakeModelClient, Session, STOPPED_NOTE, type Tool } from "@nimbus/harness";
 import { describe, expect, it } from "vitest";
 import { openSessionStore } from "../src/store/sqlite.js";
+import { resumeStateFrom } from "../src/ui/resume.js";
 
 const echo: Tool = {
   name: "echo",
@@ -68,6 +69,22 @@ describe("SQLite session store", () => {
       outputTokens: 7,
     });
     expect(reopened.load("missing")).toBeNull();
+
+    // Model calls come back for /trace, with their tool results
+    expect(saved.turns[0]!.calls).toHaveLength(2);
+    const resumed = new Session({
+      client: new FakeModelClient([]),
+      model: "gpt-6-luna",
+      instructions: "test",
+      cwd: "/projects/demo",
+      resume: resumeStateFrom(saved),
+    });
+    const trace = resumed.trace()!;
+    expect(trace.turn).toBe(1);
+    expect(trace.calls.map((call) => call.usage.inputTokens)).toEqual([100, 50]);
+    expect(trace.calls[0]!.tools).toEqual([
+      expect.objectContaining({ name: "echo", ok: true, callId: "call_1" }),
+    ]);
     reopened.close();
   });
 

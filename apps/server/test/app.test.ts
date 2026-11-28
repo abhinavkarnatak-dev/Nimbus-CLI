@@ -146,6 +146,16 @@ describe("proxy", () => {
     expect(call.body.instructions).toBe("Be brief.");
   });
 
+  it("forwards every model the CLI offers, with any reasoning level", async () => {
+    const { post, upstream } = await setup();
+    await (
+      await post({ ...validBody, model: "gpt-6.2-astra", reasoning: { effort: "max" } })
+    ).text();
+    expect(upstream.calls[0]!.body.model).toBe("gpt-6.2-astra");
+    expect(upstream.calls[0]!.body.reasoning).toEqual({ effort: "max" });
+    expect((await post({ ...validBody, reasoning: { effort: "extreme" } })).status).toBe(400);
+  });
+
   it("streams the bytes back unchanged", async () => {
     const { post } = await setup();
     const res = await post(validBody);

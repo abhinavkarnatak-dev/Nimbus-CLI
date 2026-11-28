@@ -1,3 +1,4 @@
+import type { ModelCall } from "./trace.js";
 import type { FileChange } from "../tools/changes.js";
 import { isFunctionCall, type HistoryItem, type Usage } from "../model/types.js";
 import type { TurnStatus } from "./store.js";
@@ -22,6 +23,8 @@ export interface ResumeState {
   fileChanges?: FileChange[];
   // Turns that ran bash, for the undo note
   commandTurns?: number[];
+  // Saved model calls, for /trace
+  calls?: ModelCall[];
 }
 
 export interface SavedTurnItems {

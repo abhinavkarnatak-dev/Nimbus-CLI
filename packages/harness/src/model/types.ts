@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from "../models.js";
 import type {
   ResponseFunctionToolCall,
   ResponseInputItem,
@@ -28,6 +29,8 @@ export interface ModelRequest {
   // "none" keeps the tools listed (for the cache) but unused
   toolChoice?: "none";
   promptCacheKey?: string;
+  // Left out: the model's own default
+  effort?: ReasoningEffort;
 }
 
 export type ModelEvent =

@@ -5,13 +5,14 @@ import {
   INTERRUPTED_NOTE,
   isFunctionCall,
   parseSkillRequest,
+  withToolViews,
   STOPPED_NOTE,
   VERIFY_REMINDER,
   type HistoryItem,
   type ResumeState,
 } from "@nimbus/harness";
 import type { SavedSession } from "../store/sqlite.js";
-import { INIT_REQUEST } from "./commands.js";
+import { INIT_REQUEST, parseCommitRequest } from "./commands.js";
 import { CHECK_NOTICE, newId, type Item } from "./transcript.js";
 
 const STOPPED_BY_ERROR = "This reply stopped because of an error.";
@@ -47,6 +48,7 @@ export function resumeStateFrom(saved: SavedSession): ResumeState {
     usage,
     cost: saved.turns.reduce((sum, turn) => sum + turn.cost, 0),
     fileChanges: saved.fileChanges,
+    calls: saved.turns.flatMap((turn) => withToolViews(turn.calls ?? [], turn.views)),
     commandTurns: saved.turns
       .filter((turn) => turn.views.some((view) => view.name === "bash"))
       .map((turn) => turn.turn),
@@ -93,7 +95,11 @@ export function transcriptFrom(saved: SavedSession): Item[] {
         items.push({ kind: "notice", id: newId(), text: "Nimbus closed here.", tone: "info" });
       } else if (role === "user") {
         // A skill run shows as the /name the user typed
-        items.push({ kind: "user", id: newId(), text: parseSkillRequest(text) ?? text });
+        items.push({
+          kind: "user",
+          id: newId(),
+          text: parseSkillRequest(text) ?? parseCommitRequest(text) ?? text,
+        });
       } else {
         items.push({ kind: "assistant", id: newId(), text });
       }

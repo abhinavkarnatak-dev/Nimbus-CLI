@@ -57,6 +57,9 @@ Type `/` inside Nimbus to see every command, or `/help` for the full list.
 - Nimbus reads your project's `AGENTS.md` (or `CLAUDE.md`) every session; `/init` writes one for you
 - Tell Nimbus to remember something and it will know it next time; `/memory` shows what it remembers
 - Nimbus asks before it edits files or runs commands; `/permissions` lets it edit without asking, or stop asking (it still asks before git pushes, commits and anything touching secret files like `.env`, which it never reads)
+- `/model` picks the model (GPT-6.2 Astra, GPT-6.2 Sol, GPT-6.1 Terra, GPT-6 Luna and older ones) and how much it thinks before answering; your choice is saved
+- `/commit` writes a commit message for your staged changes and commits after you approve it (it never pushes)
+- `/trace` shows each model call of the last reply: tokens, cache, cost, time and the tools it used (`/trace 3` for reply 3)
 - `/usage` shows what this session cost, and `/budget 0.50` makes Nimbus ask before spending more
 - `Ctrl+C` twice quits
 

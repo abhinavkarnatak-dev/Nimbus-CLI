@@ -1,6 +1,9 @@
+import { MODEL_PRICES } from "@nimbus/harness/cost";
 import { z } from "zod";
 
-export const ALLOWED_MODELS = ["gpt-6-luna", "gpt-6.1-terra"] as const;
+// Every model the CLI offers has a price, so it can be billed
+export const ALLOWED_MODELS = Object.keys(MODEL_PRICES) as [string, ...string[]];
+const EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const ALLOWED_INCLUDE = ["reasoning.encrypted_content"] as const;
 
 // Fields we forward, everything else is dropped
@@ -14,9 +17,7 @@ export const responsesRequestSchema = z.object({
   include: z.array(z.enum(ALLOWED_INCLUDE)).optional(),
   prompt_cache_key: z.string().max(128).optional(),
   max_output_tokens: z.number().int().positive().optional(),
-  reasoning: z
-    .object({ effort: z.enum(["minimal", "low", "medium", "high"]).optional() })
-    .optional(),
+  reasoning: z.object({ effort: z.enum(EFFORTS).optional() }).optional(),
   text: z.unknown().optional(),
   store: z.boolean().optional(),
   stream: z.literal(true, { error: "Only streaming requests are supported." }),

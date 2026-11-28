@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_SKILLS, type Skill } from "@nimbus/harness";
-import { matchCommands, parseCommand, skillCommands } from "../src/ui/commands.js";
+import { ModelChoice } from "../src/model-choice.js";
+import { memorySettings } from "../src/settings.js";
+import {
+  commitRequest,
+  COMMIT_REQUEST,
+  matchCommands,
+  parseCommand,
+  parseCommitRequest,
+  skillCommands,
+} from "../src/ui/commands.js";
 
 describe("parseCommand", () => {
   it("splits known commands from their argument", () => {
@@ -24,5 +33,18 @@ describe("parseCommand", () => {
     });
     expect(parseCommand("/create-skill a review skill")).toBeNull();
     expect(matchCommands("/cr", skills).map((command) => command.name)).toEqual(["/create-skill"]);
+  });
+
+  it("reads a saved /commit request back as what the user typed", () => {
+    expect(parseCommitRequest(commitRequest(""))).toBe("/commit");
+    expect(parseCommitRequest(commitRequest("  login fix "))).toBe("/commit login fix");
+    expect(commitRequest("x").startsWith(COMMIT_REQUEST)).toBe(true);
+    expect(parseCommitRequest("commit this")).toBeNull();
+  });
+
+  it("falls back to Luna and a level the model accepts", () => {
+    expect(new ModelChoice(memorySettings({ model: "gpt-9" })).model).toBe("gpt-6-luna");
+    const astra = new ModelChoice(memorySettings({ model: "gpt-6.2-astra", effort: "none" }));
+    expect([astra.model, astra.effort]).toEqual(["gpt-6.2-astra", "medium"]);
   });
 });

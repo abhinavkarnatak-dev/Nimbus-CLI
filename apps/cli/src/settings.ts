@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+import type { ReasoningEffort } from "@nimbus/harness";
+
 export type Route = "nimbus" | "key";
 
 export type PermissionMode = "ask" | "edits" | "full";
@@ -9,6 +11,8 @@ export type PermissionMode = "ask" | "edits" | "full";
 export interface Settings {
   use?: Route;
   permissions?: PermissionMode;
+  model?: string;
+  effort?: ReasoningEffort;
 }
 
 export interface SettingsStore {

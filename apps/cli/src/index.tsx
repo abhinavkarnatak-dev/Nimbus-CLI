@@ -2,6 +2,7 @@ import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import {
   buildSystemPrompt,
+  DEFAULT_MODEL,
   defaultTools,
   detectEnvironment,
   detectShell,
@@ -16,6 +17,7 @@ import {
 } from "@nimbus/harness";
 import { render } from "ink";
 import open from "open";
+import { ModelChoice } from "./model-choice.js";
 import { SwitchableModelClient } from "./auth/client.js";
 import { AuthController } from "./auth/controller.js";
 import { defaultStore } from "./auth/credentials.js";
@@ -35,7 +37,8 @@ import { openSessionStore, type SavedSession, type SqliteSessionStore } from "./
 import { resumeStateFrom } from "./ui/resume.js";
 import { App } from "./ui/App.js";
 
-const MODEL = "gpt-6-luna";
+// The key check only needs a model every key can use
+const MODEL = DEFAULT_MODEL;
 
 const { command, action, inviteCode, folder, resume } = parseArgs(process.argv.slice(2));
 if (folder) process.chdir(resolve(folder));
@@ -132,6 +135,7 @@ try {
 }
 
 const permissions = new Permissions(fileSettings());
+const models = new ModelChoice(fileSettings());
 const memory = new FileMemory(
   join(dataDir, "memory.md"),
   projectMemoryPath(dataDir, env.cwd),
@@ -150,7 +154,8 @@ const createSession = (saved?: SavedSession) => {
   );
   return new Session({
     client,
-    model: MODEL,
+    model: models.model,
+    effort: models.effort,
     instructions,
     cwd: env.cwd,
     tools,
@@ -182,7 +187,7 @@ const app = render(
     createSession={createSession}
     info={{
       version: HARNESS_VERSION,
-      model: MODEL,
+      model: models.model,
       shell: shell.name,
       cwd: env.cwd,
       route: routeLabel(setup),
@@ -194,6 +199,7 @@ const app = render(
     sessions={sessionStore}
     resumeOnStart={resumeOnStart}
     permissions={permissions}
+    models={models}
     memory={memory}
   />,
   {

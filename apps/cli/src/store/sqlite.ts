@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import type {
   FileChange,
   HistoryItem,
+  ModelCall,
   SessionInfo,
   SessionStore,
   ToolView,
@@ -74,6 +75,8 @@ export interface SavedTurn {
   status: TurnStatus | "running";
   items: HistoryItem[];
   views: ToolView[];
+  // Model calls, for /trace
+  calls?: ModelCall[];
   usage: Usage;
   cost: number;
 }
@@ -221,6 +224,10 @@ export function openSessionStore(path: string): SqliteSessionStore {
       addCompaction.run(sessionId, turn, JSON.stringify(items), Date.now());
     },
 
+    saveModelCall(sessionId: string, call: ModelCall) {
+      addEntry.run(sessionId, call.turn, "call", JSON.stringify(call), Date.now());
+    },
+
     list(cwd: string, limit = 20): SessionSummary[] {
       const rows = db
         .prepare(
@@ -274,6 +281,9 @@ export function openSessionStore(path: string): SqliteSessionStore {
               .filter((e) => e.kind === "item")
               .map((e) => JSON.parse(e.data) as HistoryItem),
             views: mine.filter((e) => e.kind === "view").map((e) => JSON.parse(e.data) as ToolView),
+            calls: mine
+              .filter((e) => e.kind === "call")
+              .map((e) => JSON.parse(e.data) as ModelCall),
             usage: {
               inputTokens: Number(t.input_tokens),
               cachedTokens: Number(t.cached_tokens),
