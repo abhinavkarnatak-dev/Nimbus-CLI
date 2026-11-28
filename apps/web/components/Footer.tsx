@@ -7,6 +7,7 @@ export function Footer() {
     <footer className={styles.footer}>
       <span className={styles.name}>nimbus</span>
       <nav aria-label="Footer">
+        <Link href="/docs">Docs</Link>
         <a href={REPO_URL}>GitHub</a>
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>

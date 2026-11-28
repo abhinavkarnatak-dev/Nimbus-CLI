@@ -1,23 +1,23 @@
 import { CommandLine } from "@/components/CommandLine";
 import { FadeIn, Reveal } from "@/components/motion/Reveal";
-import { REPO_URL } from "@/lib/site";
+import { INSTALL_COMMAND } from "@/lib/site";
 import styles from "./GetStarted.module.css";
 
 const STEPS = [
   {
-    title: "Clone the repository",
-    body: "Nimbus is not on npm yet, so it runs from source for now.",
-    command: `git clone ${REPO_URL}.git`,
+    title: "Install it",
+    body: "One command, and nimbus works in every folder.",
+    command: INSTALL_COMMAND,
   },
   {
-    title: "Install what the CLI needs",
-    body: "Inside the Nimbus-CLI folder. This skips the website and server packages.",
-    command: 'pnpm install --filter "@abhinavk-dev/nimbus..."',
+    title: "Log in, or bring your key",
+    body: "An invite code gives you free credit and opens a browser tab for Google. No invite? Run nimbus key set to use your own OpenAI key instead.",
+    command: "nimbus login --code <your code>",
   },
   {
-    title: "Log in with your invite code",
-    body: "A browser tab opens for Google. After that, start Nimbus in any project with pnpm nimbus followed by the folder path.",
-    command: "pnpm nimbus login --code <your code>",
+    title: "Start it in your project",
+    body: "Open your project folder and ask it anything. The docs cover every command.",
+    command: "nimbus",
   },
 ];
 
@@ -29,7 +29,7 @@ export function GetStarted() {
           Get started in three commands.
         </Reveal>
         <FadeIn>
-          <p className={styles.needs}>You need Node.js 24 or newer, pnpm and Git.</p>
+          <p className={styles.needs}>You need Node.js 24.15 or newer.</p>
         </FadeIn>
       </div>
       <ol className={styles.steps}>

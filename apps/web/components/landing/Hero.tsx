@@ -128,7 +128,7 @@ export function Hero() {
               <a href={REPO_URL} className={styles.secondary}>
                 View on GitHub
               </a>
-              <span className={styles.note}>Invite only for now</span>
+              <span className={styles.note}>Free credit by invite, or use your own key</span>
             </div>
           </div>
         </div>

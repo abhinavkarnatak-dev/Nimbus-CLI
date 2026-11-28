@@ -1,0 +1,31 @@
+/* Commands sit in their own row, with room around them */
+.command {
+  margin: 1rem 0 1.25rem;
+}
+
+.contents {
+  margin-top: 0;
+  columns: 2;
+  column-gap: 2rem;
+}
+
+.contents li {
+  break-inside: avoid;
+}
+
+.commands li {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, auto) 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .contents {
+    columns: 1;
+  }
+
+  .commands li {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}

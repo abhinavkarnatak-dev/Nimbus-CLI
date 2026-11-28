@@ -26,14 +26,15 @@ export const metadata: Metadata = {
 
 export default function Terms() {
   return (
-    <LongPage title="Terms" updated="27 November 2026">
+    <LongPage title="Terms" updated="28 November 2026">
       <p>By using Nimbus you agree to these terms.</p>
 
       <h2>What Nimbus is</h2>
       <p>
-        Nimbus is an early, invite only AI agent for your terminal. It can read and change files and
-        run commands on your computer. It starts in the folder you choose, but the commands it runs
-        can reach anything your user account can.
+        Nimbus is an early AI agent for your terminal. Free Nimbus credit is invite only, and you
+        can also use it with your own OpenAI key. It can read and change files and run commands on
+        your computer. It starts in the folder you choose, but the commands it runs can reach
+        anything your user account can.
       </p>
 
       <h2>Your responsibility</h2>

@@ -39,6 +39,7 @@ export function BigFooter() {
     <footer ref={root} className={styles.footer}>
       <div className={styles.glow} aria-hidden="true" />
       <nav className={styles.links} aria-label="Footer">
+        <Link href="/docs">Docs</Link>
         <a href={REPO_URL}>GitHub</a>
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>

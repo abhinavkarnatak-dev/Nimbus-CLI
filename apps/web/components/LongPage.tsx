@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Footer } from "./Footer";
 import styles from "./LongPage.module.css";
 
-// Plain reading page: privacy, terms
+// Plain reading page: docs, privacy, terms
 export function LongPage({
   title,
   updated,

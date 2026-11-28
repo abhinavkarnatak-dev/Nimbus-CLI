@@ -1,40 +1,50 @@
 # Nimbus
 
+[![npm](https://img.shields.io/npm/v/@abhinavk-dev/nimbus)](https://www.npmjs.com/package/@abhinavk-dev/nimbus)
 [![CI](https://github.com/abhinavkarnatak-dev/Nimbus-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/abhinavkarnatak-dev/Nimbus-CLI/actions/workflows/ci.yml)
 
 Nimbus is an AI agent that runs in your terminal. Ask it anything: it searches the web, works through your files, runs commands and writes the code to get it done.
 
-Website: [nimbus.abhinavkarnatak.com](https://nimbus.abhinavkarnatak.com)
+Website and docs: [nimbus.abhinavkarnatak.com](https://nimbus.abhinavkarnatak.com)
 
-> Nimbus is in early access and invite only. It is not on npm yet, so it runs from source.
+## Install
 
-## Requirements
+You need Node.js 24.15 or newer.
 
-- Node.js 24 or newer
-- pnpm
-- Git
+```sh
+npm install -g @abhinavk-dev/nimbus
+```
 
 ## Get started
 
+Nimbus needs something to pay for model calls. Pick one:
+
+- **An invite code** gives you free Nimbus credit. Log in with Google:
+  ```sh
+  nimbus login --code <your code>
+  ```
+- **Your own OpenAI key** works without an invite. The key stays on your computer and calls go straight to OpenAI:
+  ```sh
+  nimbus key set
+  ```
+
+Then start Nimbus in your project folder and ask it something:
+
 ```sh
-git clone https://github.com/abhinavkarnatak-dev/Nimbus-CLI.git
-cd Nimbus-CLI
-pnpm install --filter "@abhinavk-dev/nimbus..."
-pnpm nimbus login --code <your code>
+cd my-project
+nimbus
 ```
 
-A browser tab opens to log in with Google. After that, start Nimbus in any project:
-
-```sh
-pnpm nimbus <path to your project>
-```
+Or point it at a folder: `nimbus <path to your project>`. Web search goes through Nimbus, so it needs a login.
 
 Conversations are saved on your computer. Pick up an earlier one with `--resume`, or the latest one in that folder with `--continue`:
 
 ```sh
-pnpm nimbus --resume <path to your project>
-pnpm nimbus --continue <path to your project>
+nimbus --resume
+nimbus --continue
 ```
+
+`nimbus --help` lists everything you can type before Nimbus starts.
 
 Changed your mind about an edit? Just ask Nimbus to undo or revert it. It puts the files back from saved copies and keeps any edits you made yourself. Changes made by commands it ran cannot be undone.
 
@@ -42,7 +52,7 @@ If your internet drops for a moment, Nimbus tries again by itself, up to 5 times
 
 ## Paying for model calls
 
-Invited accounts start with free Nimbus credit. You can also use your own OpenAI key: add it with `/key` inside Nimbus. The key stays on your computer and model calls go straight to OpenAI. Switch between the two with `/use`.
+Invited accounts start with free Nimbus credit. You can also use your own OpenAI key: add it with `nimbus key set`, or `/key` inside Nimbus. The key stays on your computer and model calls go straight to OpenAI. Switch between the two with `/use` (or `nimbus use key` and `nimbus use nimbus`).
 
 ## Commands and shortcuts
 

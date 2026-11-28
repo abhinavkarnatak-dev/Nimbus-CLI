@@ -10,4 +10,5 @@ export const OG_IMAGE = {
 export const SITE_DESCRIPTION =
   "An AI agent that lives in your terminal. Ask it anything: it searches the web, works through your files, runs commands and writes the code.";
 export const REPO_URL = "https://github.com/abhinavkarnatak-dev/Nimbus-CLI";
+export const INSTALL_COMMAND = "npm install -g @abhinavk-dev/nimbus";
 export const CONTACT_URL = `${REPO_URL}/issues`;
