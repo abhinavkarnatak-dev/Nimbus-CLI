@@ -17,7 +17,7 @@ import {
 } from "@nimbus/harness";
 import { render } from "ink";
 import open from "open";
-import { shownMessage } from "./ui/commands.js";
+import { shownMessage } from "./ui/shown.js";
 import { ModelChoice } from "./model-choice.js";
 import { SwitchableModelClient } from "./auth/client.js";
 import { AuthController } from "./auth/controller.js";

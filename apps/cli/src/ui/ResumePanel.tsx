@@ -1,7 +1,7 @@
 import { Box, Text } from "ink";
 import type { SessionSummary } from "../store/sqlite.js";
 import { timeAgo } from "./resume.js";
-import { shownTitle } from "./commands.js";
+import { shownTitle } from "./shown.js";
 import { theme } from "./theme.js";
 
 export interface ResumePicker {

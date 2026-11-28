@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_SKILLS, type Skill } from "@nimbus/harness";
 import { ModelChoice } from "../src/model-choice.js";
+import { readFileSync } from "node:fs";
 import { memorySettings } from "../src/settings.js";
+import { shownMessage, shownTitle } from "../src/ui/shown.js";
 import {
   commitRequest,
   COMMIT_REQUEST,
   matchCommands,
   parseCommand,
   parseCommitRequest,
-  shownMessage,
-  shownTitle,
   skillCommands,
   INIT_REQUEST,
 } from "../src/ui/commands.js";
@@ -61,5 +61,11 @@ describe("parseCommand", () => {
       shownTitle('The user ran the skill "count-js-lines" by typing /count-js-lines. Fol'),
     ).toBe("/count-js-lines");
     expect(shownTitle("Fix the login bug")).toBe("Fix the login bug");
+  });
+
+  it("imports only types from the harness, because the website builds without it", () => {
+    const source = readFileSync(new URL("../src/ui/commands.ts", import.meta.url), "utf8");
+    const imports = source.match(/^import .* from "@nimbus\/harness";$/gm) ?? [];
+    expect(imports.every((line) => line.startsWith("import type "))).toBe(true);
   });
 });

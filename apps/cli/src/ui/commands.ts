@@ -1,4 +1,6 @@
-import { parseSkillRequest, type Skill } from "@nimbus/harness";
+// The website imports this file: only type imports from the harness
+import type { Skill } from "@nimbus/harness";
+
 export interface SlashCommand {
   name: string;
   description: string;
@@ -51,20 +53,6 @@ export function parseCommitRequest(text: string): string | null {
   if (text === COMMIT_REQUEST) return "/commit";
   if (!text.startsWith(COMMIT_REQUEST + ADDED)) return null;
   return `/commit ${text.slice(COMMIT_REQUEST.length + ADDED.length)}`;
-}
-
-// What the user typed, for a request Nimbus wrote for them
-export function shownMessage(text: string): string {
-  if (text === INIT_REQUEST) return "/init";
-  return parseSkillRequest(text) ?? parseCommitRequest(text) ?? text;
-}
-
-// Titles saved before real titles: the start of a hidden request
-export function shownTitle(title: string): string {
-  if (title.length >= 40 && INIT_REQUEST.startsWith(title)) return "/init";
-  if (title.length >= 40 && COMMIT_REQUEST.startsWith(title)) return "/commit";
-  const skill = /^The user ran the skill "([a-z0-9-]+)"/.exec(title);
-  return skill ? `/${skill[1]}` : title;
 }
 
 export const COMMANDS: SlashCommand[] = [

@@ -11,7 +11,8 @@ import {
   type ResumeState,
 } from "@nimbus/harness";
 import type { SavedSession } from "../store/sqlite.js";
-import { INIT_REQUEST, shownMessage } from "./commands.js";
+import { INIT_REQUEST } from "./commands.js";
+import { shownMessage } from "./shown.js";
 import { CHECK_NOTICE, newId, type Item } from "./transcript.js";
 
 const STOPPED_BY_ERROR = "This reply stopped because of an error.";
