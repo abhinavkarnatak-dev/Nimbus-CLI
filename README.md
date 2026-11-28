@@ -1,7 +1,6 @@
 # Nimbus
 
 [![npm](https://img.shields.io/npm/v/@abhinavk-dev/nimbus)](https://www.npmjs.com/package/@abhinavk-dev/nimbus)
-[![CI](https://github.com/abhinavkarnatak-dev/Nimbus-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/abhinavkarnatak-dev/Nimbus-CLI/actions/workflows/ci.yml)
 
 Nimbus is an AI agent that runs in your terminal. Ask it anything: it searches the web, works through your files, runs commands and writes the code to get it done.
 

@@ -6,7 +6,7 @@ export interface SlashCommand {
 }
 
 // Sent as the user's message on /init; seen by the model
-export const INIT_REQUEST = `Create an AGENTS.md file in the root of this project, for coding agents like you. First
+export const INIT_REQUEST = `Create an AGENTS.md file in the root of this project, for AI agents like you. First
 explore the project: read the README, package and config files, and look at the folder
 layout and a few key source files. Then write AGENTS.md, short and specific to this
 project (under about 80 lines), with these sections:

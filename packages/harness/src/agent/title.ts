@@ -14,7 +14,7 @@ export function titleRequest(messages: readonly string[]): string {
       return `${index + 1}. ${cut}`;
     })
     .join("\n");
-  return `Write a short title for a conversation between a user and a coding agent, based on the
+  return `Write a short title for a conversation between a user and an AI agent, based on the
 user's messages below. The title should say what the user is working on or asking about,
 in 3 to 6 words, in sentence case, with no quotes and no full stop at the end. Examples:
 "Fix login redirect bug", "Count lines in JS files", "Set up Postgres with Drizzle".

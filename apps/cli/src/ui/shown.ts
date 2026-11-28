@@ -1,9 +1,15 @@
 import { parseSkillRequest } from "@nimbus/harness";
 import { COMMIT_REQUEST, INIT_REQUEST, parseCommitRequest } from "./commands.js";
 
+// Saved before 0.1.2, when it said "coding agents"
+const OLD_INIT_REQUEST = INIT_REQUEST.replace(
+  "for AI agents like you",
+  "for coding agents like you",
+);
+
 // What the user typed, for a request Nimbus wrote for them
 export function shownMessage(text: string): string {
-  if (text === INIT_REQUEST) return "/init";
+  if (text === INIT_REQUEST || text === OLD_INIT_REQUEST) return "/init";
   return parseSkillRequest(text) ?? parseCommitRequest(text) ?? text;
 }
 

@@ -146,7 +146,9 @@ export function buildSystemPrompt(
   toolNames: readonly string[] = [],
   extras: PromptExtras = {},
 ): string {
-  return `You are Nimbus, an AI coding agent that runs in the user's terminal.
+  return `You are Nimbus, an AI agent that runs in the user's terminal. You help with whatever the
+user asks, from quick questions and research to working with files, running commands and
+writing code.
 
 Environment:
 - Operating system: ${env.os}

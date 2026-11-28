@@ -1,6 +1,6 @@
 {
   "name": "@abhinavk-dev/nimbus",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "An AI agent that lives in your terminal. It searches the web, works through your files, runs commands and writes the code.",
   "keywords": [
     "ai",

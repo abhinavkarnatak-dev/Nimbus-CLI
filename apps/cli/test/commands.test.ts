@@ -53,6 +53,9 @@ describe("parseCommand", () => {
 
   it("shows what the user typed instead of a hidden request, also for old titles", () => {
     expect(shownMessage(INIT_REQUEST)).toBe("/init");
+    expect(
+      shownMessage(INIT_REQUEST.replace("for AI agents like you", "for coding agents like you")),
+    ).toBe("/init");
     expect(shownMessage(commitRequest("x"))).toBe("/commit x");
     expect(shownMessage("hello")).toBe("hello");
     expect(shownTitle(INIT_REQUEST.slice(0, 120))).toBe("/init");
