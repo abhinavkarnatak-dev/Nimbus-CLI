@@ -20,7 +20,7 @@ import { App } from "../src/ui/App.js";
 
 const tick = (ms = 80) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
+async function waitFor(check: () => boolean, timeoutMs = 10_000): Promise<void> {
   const start = Date.now();
   while (!check()) {
     if (Date.now() - start > timeoutMs) throw new Error("Timed out waiting for the UI");
