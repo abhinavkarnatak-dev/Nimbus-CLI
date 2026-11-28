@@ -2,11 +2,9 @@ import type { ReactNode } from "react";
 import type { Line, Row } from "@/lib/session";
 import styles from "./Terminal.module.css";
 
-const HIGHLIGHT =
-  /((?<![\w/])(?:src|test)\/[\w.-]*\w|package\.json|test:watch|--watch|npm test|slugify|https:\/\/\S+[^\s).])/g;
-
+// `code` in the reply is highlighted, like the CLI does
 function highlight(text: string): ReactNode[] {
-  return text.split(HIGHLIGHT).map((part, i) =>
+  return text.split(/`([^`]+)`/g).map((part, i) =>
     i % 2 === 1 ? (
       <span key={i} className={styles.accent}>
         {part}
@@ -53,7 +51,7 @@ export function TerminalRow({ row }: { row: Row }) {
       <div className={styles.toolBody}>
         <div>
           <b>{row.tool}</b>
-          <span className={styles.arg}>({row.arg})</span>
+          {row.arg && <span className={styles.arg}>({row.arg})</span>}
         </div>
         <div className={styles.result}>
           <span className={styles.elbow}>└</span> {row.result}
@@ -70,11 +68,11 @@ export function TerminalHeader() {
       <div className={styles.brand}>nimbus</div>
       <dl>
         <dt>cwd</dt>
-        <dd>~/Downloads/AK-Dev/AI/Projects/CLI Test</dd>
+        <dd>~/projects/orders-api</dd>
         <dt>model</dt>
         <dd>gpt-6-luna</dd>
         <dt>shell</dt>
-        <dd>Git Bash (bash)</dd>
+        <dd>bash</dd>
       </dl>
     </div>
   );
