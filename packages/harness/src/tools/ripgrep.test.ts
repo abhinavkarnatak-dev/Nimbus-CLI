@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { rgPath } from "@vscode/ripgrep";
-import { ripgrepCommand, runRipgrep } from "./ripgrep.js";
+import { BASE_RIPGREP_ARGS, ripgrepCommand, runRipgrep } from "./ripgrep.js";
 
 describe("ripgrep", () => {
   it("uses the bundled binary, or rg on the PATH when it never downloaded", () => {
@@ -11,7 +11,7 @@ describe("ripgrep", () => {
 
   it("finds files with the bundled binary", async () => {
     const run = await runRipgrep(
-      ["--files", "src/tools"],
+      ["--files", ...BASE_RIPGREP_ARGS, "src/tools"],
       process.cwd(),
       new AbortController().signal,
       500,

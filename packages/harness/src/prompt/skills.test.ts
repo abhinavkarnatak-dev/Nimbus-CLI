@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -160,7 +160,10 @@ describe("skills", () => {
 
   it("writes and edits personal skills outside the project, and nothing else outside", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "nimbus-skills-proj-"));
-    const home = await mkdtemp(join(tmpdir(), "nimbus-skills-home-"));
+    // Home reached through a link, like macOS /var and Windows short names
+    const real = await mkdtemp(join(tmpdir(), "nimbus-skills-home-"));
+    const home = `${real}-link`;
+    await symlink(real, home, "junction");
     const skillsDir = join(home, ".nimbus", "skills");
     const ctx = { ...ctxWith(cwd, []), skillsDir };
     const file = join(skillsDir, "say-hi", "SKILL.md");

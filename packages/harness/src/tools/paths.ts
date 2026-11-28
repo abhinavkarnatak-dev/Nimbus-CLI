@@ -73,7 +73,8 @@ export async function resolveForWrite(
   if (!isInside(root, absolute)) {
     let found: string | null = null;
     for (const dir of present(extra)) {
-      if (!isInside(resolve(dir), absolute)) continue;
+      const real = await realpath(dir).catch(() => null);
+      if (!isInside(resolve(dir), absolute) && !(real && isInside(real, absolute))) continue;
       // The folder may not exist before the first skill
       await mkdir(dir, { recursive: true });
       found = await realpath(dir);
@@ -180,13 +181,15 @@ export async function resolveEditable(
     if (!String((error as Error).message).startsWith("path is outside") || !isAbsolute(full)) {
       throw error;
     }
+    // Compare real paths: macOS /var and Windows short names differ
+    const real = await realpath(full).catch(() => null);
     for (const dir of present(extra)) {
       const base = await realpath(dir).catch(() => null);
-      if (!base || !isInside(base, resolve(full))) continue;
-      const real = await realpath(full).catch((cause: unknown) => {
-        throw new Error(`file not found: ${path}`, { cause });
-      });
-      if (isInside(base, real)) return real;
+      if (!base) continue;
+      if (real && isInside(base, real)) return real;
+      if (!real && (isInside(base, resolve(full)) || isInside(resolve(dir), resolve(full)))) {
+        throw new Error(`file not found: ${path}`, { cause: error });
+      }
     }
     throw error;
   }
