@@ -1,5 +1,4 @@
-// The website imports this file: only type imports from the harness
-import type { Skill } from "@nimbus/harness";
+// The website imports this file: no imports from the harness here
 
 export interface SlashCommand {
   name: string;
@@ -80,7 +79,9 @@ export const COMMANDS: SlashCommand[] = [
 ];
 
 // Skills as commands; built-in commands win a clash
-export function skillCommands(skills: readonly Skill[]): SlashCommand[] {
+export function skillCommands(
+  skills: readonly { name: string; description: string }[],
+): SlashCommand[] {
   return skills
     .filter((skill) => !COMMANDS.some((command) => command.name === `/${skill.name}`))
     .map((skill) => ({ name: `/${skill.name}`, description: skill.description }));

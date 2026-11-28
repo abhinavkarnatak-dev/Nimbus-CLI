@@ -63,9 +63,8 @@ describe("parseCommand", () => {
     expect(shownTitle("Fix the login bug")).toBe("Fix the login bug");
   });
 
-  it("imports only types from the harness, because the website builds without it", () => {
+  it("imports nothing from the harness, because the website builds without it", () => {
     const source = readFileSync(new URL("../src/ui/commands.ts", import.meta.url), "utf8");
-    const imports = source.match(/^import .* from "@nimbus\/harness";$/gm) ?? [];
-    expect(imports.every((line) => line.startsWith("import type "))).toBe(true);
+    expect(source).not.toMatch(/^import .*$/m);
   });
 });
